@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- DefiniteAssign.gsl — GSL surface for definiteassign (§3 grammar, explicit node form).  history · must ⇒ fwd·must.
+include Tac.Locals
+
+analysis DefiniteAssign {
+  history DefiniteAssign da : Vars[Var] {
+    update : ∀ n→n'. da(n') ⊆ genVars(n) ∪ (da(n) ∩ transpGenVars(n))
+    seed   : da(entry) ⊆ ∅
+    within : ∀ n. da(n) ⊆ allGenVars
+  }
+}

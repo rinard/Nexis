@@ -1,0 +1,16 @@
+-- Copyright (c) 2026 Martin Rinard
+-- DcFwdMust.gsl — DOUBLY-CLAMPED DEMONSTRATOR (forward·must, cap-the-transfer `resFMC`).
+-- A forward-must ghost with BOTH a floor and a ceiling; the pure carrier `df(n') ⊆ df(n)` (output self
+-- `df(n')` on the subset side ⇒ must) fixes the quadrant, and the band `dcfmLo ⊆ dcfmHi` routes to `resFMC`.
+include Tac.Locals
+include analyses.dcfwdmust.DcFwdMustDefs
+
+analysis DcFwdMust {
+  history DcFwdMust df : Exprs[Expr] {
+    update : ∀ n→n'. df(n') ⊆ df(n)
+    check  : ∀ n. df(n) ⊆ dcfmHi(n)
+    check  : ∀ n. dcfmLo(n) ⊆ df(n)
+    seed   : df(entry) ⊆ ∅
+    within : ∀ n. df(n) ⊆ allExprs
+  }
+}

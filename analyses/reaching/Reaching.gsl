@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Reaching.gsl — GSL surface for reaching (§3 grammar, explicit node form).  history · may ⇒ fwd·may.
+include Tac.Locals
+
+analysis Reaching {
+  history Reaching reach : Defs[Node] {
+    update : ∀ n→n'. genDefs(n) ∪ (reach(n) ∩ transpDefs(n)) ⊆ reach(n')
+    seed   : ∅ ⊆ reach(entry)
+    within : ∀ n. reach(n) ⊆ allDefs
+  }
+}

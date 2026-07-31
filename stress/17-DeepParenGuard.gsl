@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 17 DeepParenGuard — an EXTREMELY nested guard: `((A ∧ (B ∨ C)) ∧ D) ∨ (E ∧ (F ∨ G))`, mixing gathers
+-- and gates four paren-levels deep. Stresses: the Guard/GuardAnd/GuardAtom recursion + `( … )` grouping
+-- to its limit; the monotone-DNF the term printer must flatten to `union`/`inter`.
+analysis DeepParenGuardS {
+  history DeepParen dp : Nums[Nums] {
+    update : ∀ n→n'. dp(n) ⊆ dp(n')
+    always : ∀ n→n'. z ∈ dp(n')  when  ((belowA(z) ⊆ dp(n) ∧ (pA meets dp(n) ∨ pB meets dp(n))) ∧ belowC(z) ⊆ dp(n)) ∨ (pD meets dp(n) ∧ (belowE(z) ⊆ dp(n) ∨ pF meets dp(n)))
+    seed   : ∅ ⊆ dp(entry)
+    within : ∀ n. dp(n) ⊆ allNums
+  }
+}

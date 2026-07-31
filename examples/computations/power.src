@@ -1,0 +1,10 @@
+// Copyright (c) 2026 Martin Rinard
+// Exponentiation by squaring: result = base ^ exp.
+base := 3;
+exp := 13;
+result := 1;
+while exp {
+  if exp & 1 { result := result * base };
+  base := base * base;
+  exp := exp >> 1
+}

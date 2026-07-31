@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+x := a + b; y := a + b; z := a * b; z := 0; w := z + 1

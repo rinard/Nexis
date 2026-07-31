@@ -1,0 +1,14 @@
+-- Copyright (c) 2026 Martin Rinard
+-- FwdMayCeil.gsl — fwd·MAY with a lone CEILING ⇒ `resFmC` with the floor defaulted to `∅`.
+-- Exercises the (resFmC × ∅-default-floor) corner: the `may` carrier `fmc(n) ⊆ fmc(n')` fixes the quadrant,
+-- and the lone ceiling `fmc ⊆ genExprs` (opposite polarity to may) caps the transfer from above.
+include Tac.Locals
+
+analysis FwdMayCeil {
+  history FwdMayCeil fmc : Exprs[Expr] {
+    update : ∀ n→n'. fmc(n) ⊆ fmc(n')
+    check  : ∀ n. fmc(n) ⊆ genExprs(n)
+    seed   : ∅ ⊆ fmc(entry)
+    within : ∀ n. fmc(n) ⊆ allExprs
+  }
+}

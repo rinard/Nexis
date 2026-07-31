@@ -1,0 +1,10 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 33 FwdMustFloor — fwd·MUST carrier with a lone FLOOR ⇒ resFMC (ceiling defaulted to the universe).
+analysis FwdMustFloorS {
+  history FwdMustFloor fmf : Exprs[Expr] {
+    update : ∀ n→n'. fmf(n') ⊆ fmf(n)
+    check  : ∀ n. floorExprs(n) ⊆ fmf(n)
+    seed   : fmf(entry) ⊆ ∅
+    within : ∀ n. fmf(n) ⊆ allExprs
+  }
+}

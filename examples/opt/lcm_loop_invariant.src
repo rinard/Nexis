@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+a := 5; b := 3; i := 0; while i < 10 { t := a + b; i := i + t }

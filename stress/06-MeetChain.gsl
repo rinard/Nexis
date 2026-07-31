@@ -1,0 +1,24 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 06 MeetChain — a DEEP confluence dependency DAG: a fixpoint carrier feeds a meet, which feeds a join,
+-- which feeds a meet — each a transfer variable whose RHS is the PREVIOUS ghost, alternating polarity.
+-- Stresses: meet/join detection over a 4-long foreign chain (base → ma → jb → mc), topological ordering,
+-- no atoms (fully lowerable) — a pure structural torture of the confluence path.
+analysis MeetChain {
+  history Base base : Exprs[Expr] {
+    update : ∀ n→n'. base(n') ⊆ genExprs(n) ∪ (base(n) ∩ transpExprs(n))
+    seed   : base(entry) ⊆ ∅
+    within : ∀ n. base(n) ⊆ allExprs
+  }
+  prophecy MeetA ma : Exprs[Expr] {          -- meet: self ⊆ foreign'
+    predict : ∀ n→n'. ma(n) ⊆ base(n')
+    within  : ∀ n. ma(n) ⊆ allExprs
+  }
+  prophecy JoinB jb : Exprs[Expr] {          -- join: foreign' ⊆ self
+    predict : ∀ n→n'. ma(n') ⊆ jb(n)
+    within  : ∀ n. jb(n) ⊆ allExprs
+  }
+  prophecy MeetC mc : Exprs[Expr] {          -- meet of the join
+    predict : ∀ n→n'. mc(n) ⊆ jb(n')
+    within  : ∀ n. mc(n) ⊆ allExprs
+  }
+}

@@ -1,0 +1,13 @@
+-- Copyright (c) 2026 Martin Rinard
+-- ConstProp.gsl — GSL surface for constant propagation (fwd·must over ⟨var, const⟩).  history · must ⇒ fwd·must.
+-- ⟨x,c⟩ ∈ cp(n) means x = c on every path to n; a literal copy `x := imm c` gens ⟨x,c⟩, any assignment to x
+-- kills every ⟨x,·⟩ (transpConst), and the must-intersection at merges cancels conflicting constants.
+include Tac.Locals
+
+analysis ConstProp {
+  history ConstProp cp : ConstPairs[CPair] {
+    update : ∀ n→n'. cp(n') ⊆ genConst(n) ∪ (cp(n) ∩ transpConst(n))
+    seed   : cp(entry) ⊆ ∅
+    within : ∀ n. cp(n) ⊆ allConst
+  }
+}

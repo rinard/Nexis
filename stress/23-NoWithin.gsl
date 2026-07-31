@@ -1,0 +1,10 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 23 NoWithin — a ghost with NO `within` universe clause. Every ghost must bound its carried set by a
+-- universe (the `MTC.Wf`/clamp obligations need it), so the totality contract must reject the omission
+-- with a located error rather than defaulting.
+analysis NoWithinS {
+  history NoWithin nw : Nums[Nums] {
+    update : ∀ n→n'. nw(n') ⊆ genN(n) ∪ (nw(n) ∩ transpN(n))
+    seed   : ∅ ⊆ nw(entry)
+  }
+}

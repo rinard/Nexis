@@ -1,0 +1,21 @@
+-- Copyright (c) 2026 Martin Rinard
+-- PrimeAdd.gsl — a COMPOUND-atom (gather ∩ gate) GATED DATA-DEPENDENCY availability analysis, fwd·may.
+-- `g` accumulates the observable definitions ungated (`obsGen`, priming the pump) plus every node `z`
+-- whose data-dependencies are all present AND some observable is already tracked: `z` is added when all
+-- its `below(z)` (operand-def nodes) are in `g(n)` AND some `primes` (observable def) is live in `g(n)`.
+-- `∧` → `inter`; `below(z) ⊆ g` → gather (AND-gather); `primes meets g` → gate. Direction WRITTEN (history
+-- ⇒ forward); the quadrant (fwd·may) is INFERRED (accumulate). Defs in `PrimeAddDefs`; `_sub` in `PrimeAddDefsSub`.
+
+include Tac.Locals
+
+include analyses.primeadd.PrimeAddDefs
+
+analysis PrimeAdd {
+
+  history PrimeAdd g : Defs[Node] {                  -- history · may  ⇒  fwd·may
+    update : ∀ n→n'. g(n) ∪ obsGen(n) ⊆ g(n')                           -- carry ∪ ungated observable seed
+    always : ∀ n→n'. z ∈ g(n')  when  below(z) ⊆ g(n) ∧ primes meets g(n)  -- gather ∩ gate
+    seed   : ∅ ⊆ g(entry)
+    within : ∀ n. g(n) ⊆ allDefs
+  }
+}

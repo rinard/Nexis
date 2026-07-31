@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 13 DiagGuard — the DIAGONAL guard atom `z ∈ in` (the `var` summand written as a per-element condition)
+-- conjoined with a gate: `z ∈ dg(n) ∧ tag meets dg(n)`. Stresses: `z ∈ ghost` resolving to the diagonal
+-- (var) atom rather than a gather/constant, mixed with a gate under `∧`.
+analysis DiagGuardS {
+  history DiagGuard dg : Nums[Nums] {
+    update : ∀ n→n'. dg(n) ⊆ dg(n')
+    always : ∀ n→n'. z ∈ dg(n')  when  z ∈ dg(n) ∧ tag meets dg(n)
+    seed   : ∅ ⊆ dg(entry)
+    within : ∀ n. dg(n) ⊆ allNums
+  }
+}

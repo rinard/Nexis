@@ -1,0 +1,10 @@
+// Copyright (c) 2026 Martin Rinard
+// Euclid's algorithm: greatest common divisor of two constants.
+a := 1071;
+b := 462;
+while b {
+  t := a % b;
+  a := b;
+  b := t
+};
+gcd := a

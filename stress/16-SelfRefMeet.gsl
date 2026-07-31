@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 16 SelfRefMeet — a DEGENERATE confluence: `a(n) ⊆ a(n')` — the "foreign" is the carried ghost itself,
+-- with no checks. Stresses: the meet/join detector when foreign == self (a self-referential transfer
+-- variable). A real emitter must decide this is either a trivial fixpoint or a diagnostic, not silently a
+-- "meet over itself".
+analysis SelfRefMeetS {
+  prophecy SelfRefMeet a : Exprs[Expr] {
+    predict : ∀ n→n'. a(n) ⊆ a(n')
+    within  : ∀ n. a(n) ⊆ allExprs
+  }
+}

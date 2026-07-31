@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 02 TriGuard — a THREE-way conjunction in one per-element guard: gather ∧ gate ∧ gather.
+-- Lowers to `union var (inter (gather allNums below) (inter (gate primes allNums) (gather allNums above)))`.
+-- Stresses: right-nested `∧` chains, two distinct gather sub-families sharing a universe.
+analysis TriGuardS {
+  history TriGuard t : Nums[Nums] {
+    update : ∀ n→n'. t(n) ⊆ t(n')
+    always : ∀ n→n'. z ∈ t(n')  when  below(z) ⊆ t(n) ∧ primes meets t(n) ∧ above(z) ⊆ t(n)
+    seed   : ∅ ⊆ t(entry)
+    within : ∀ n. t(n) ⊆ allNums
+  }
+}

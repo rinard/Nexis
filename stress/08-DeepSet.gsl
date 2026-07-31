@@ -1,0 +1,13 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 08 DeepSet — a DEEPLY NESTED set-expression in the propagation RHS, four operators deep with mixed
+-- ∪/∩/∖ and explicit parens: `(genExprs ∪ (ds ∩ (transpExprs ∖ killExprs))) ∪ extraExprs`.
+-- Stresses: the SetExpr precedence core (∩/∖ tighter than ∪, left-assoc, parens overriding) far past the
+-- canonical `gen ∪ (self ∩ transp)` diamond shape — a deliberate non-diamond fixpoint (should PARSE, and
+-- reveal how the classifier reacts to a term that isn't the canonical shape).
+analysis DeepSetS {
+  history DeepSet ds : Exprs[Expr] {
+    update : ∀ n→n'. ds(n') ⊆ (genExprs(n) ∪ (ds(n) ∩ (transpExprs(n) ∖ killExprs(n)))) ∪ extraExprs(n)
+    seed   : ds(entry) ⊆ ∅
+    within : ∀ n. ds(n) ⊆ allExprs
+  }
+}

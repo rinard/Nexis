@@ -1,0 +1,13 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 19 BwdImage — a BACKWARD (prophecy) image: the guard reads the SUCCESSOR incoming `bi(n')`
+-- (`∃ y ∈ bi(n'). reaches(n)(y,z)`), so the image atom rides a bwd·may carrier. Stresses: image at the
+-- successor endpoint (prophecy incoming), an atom on the backward-may quadrant, a named halt seed.
+analysis BwdImageS {
+  prophecy BwdImage bi : Vals[Vals] {
+    predict : ∀ n→n'. bi(n') ⊆ bi(n) ∪ bornVals(n)
+    check   : ∀ n→n'. z ∈ bi(n)  when  ∃ y ∈ bi(n'). reaches(n)(y,z)
+    check   : ∀ n. floorVals(n) ⊆ bi(n)
+    seed    : seedVals ⊆ bi(final)
+    within  : ∀ n. bi(n) ⊆ allVals
+  }
+}

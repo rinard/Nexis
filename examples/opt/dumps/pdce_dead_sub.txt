@@ -1,0 +1,147 @@
+### pdce_dead_sub
+source: d := a - b; d := 9; e := d
+
+========== [1/3] IR — before optimization ==========
+entry = L4
+  L0: halt
+  L1: d := a - b    → L2
+  L2: d := 9    → L3
+  L3: e := d    → L0
+> L4: noop    → L1
+
+obs = [d, a, b, e]
+
+========== [2/3] IR — after optimization (LCM + PDCE + cleanup), fed to codegen ==========
+entry = L2
+  L0: e := d    → L1
+  L1: halt
+> L2: d := 9    → L0
+
+obs = [d, a, b, e]
+
+========== [3/3] generated AArch64 assembly ==========
+.text
+.globl _main
+.p2align 2
+_main:
+  sub sp, sp, #48
+  stp x29, x30, [sp]
+  mov x29, sp
+  str xzr, [x29, #16]
+  str xzr, [x29, #24]
+  str xzr, [x29, #32]
+  str xzr, [x29, #40]
+  b L16
+L0:
+  ldr x9, [x29, #24]
+L1:
+  str x9, [x29, #16]
+L2:
+  b L8
+L3:
+  bl _abort
+L4:
+  bl _abort
+L5:
+  bl _abort
+L6:
+  bl _abort
+L7:
+  bl _abort
+L8:
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr0@PAGE
+  add x8, x8, ostr0@PAGEOFF
+  ldr x9, [x29, #24]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr1@PAGE
+  add x8, x8, ostr1@PAGEOFF
+  ldr x9, [x29, #32]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr2@PAGE
+  add x8, x8, ostr2@PAGEOFF
+  ldr x9, [x29, #40]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr3@PAGE
+  add x8, x8, ostr3@PAGEOFF
+  ldr x9, [x29, #16]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  mov w0, #0
+  ldp x29, x30, [sp]
+  add sp, sp, #48
+  ret
+L9:
+  bl _abort
+L10:
+  bl _abort
+L11:
+  bl _abort
+L12:
+  bl _abort
+L13:
+  bl _abort
+L14:
+  bl _abort
+L15:
+  bl _abort
+L16:
+  ldr x9, =9
+L17:
+  str x9, [x29, #24]
+L18:
+  b L0
+L19:
+  bl _abort
+L20:
+  bl _abort
+L21:
+  bl _abort
+L22:
+  bl _abort
+L23:
+  bl _abort
+L24:
+  bl _abort
+L25:
+  bl _abort
+L26:
+  bl _abort
+L27:
+  bl _abort
+L28:
+  bl _abort
+L29:
+  bl _abort
+L30:
+  bl _abort
+L31:
+  bl _abort
+.section __TEXT,__cstring
+lfmt: .asciz "%s=%lld\n"
+ostr0: .asciz "d"
+ostr1: .asciz "a"
+ostr2: .asciz "b"
+ostr3: .asciz "e"

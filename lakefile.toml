@@ -1,0 +1,95 @@
+# Copyright (c) 2026 Martin Rinard
+# Nexis — Lake package.
+#
+# Layout: the verified language foundation is the `BaseLanguage` library (rooted at
+# `BaseLanguage.lean` + the `BaseLanguage/` source tree). A future project layer can be added as
+# another `[[lean_lib]]` that depends on it. No external dependencies — pure Lean core.
+name = "nexis"
+defaultTargets = ["Solver", "BaseLanguage", "Analyses", "prophecyc", "Seam", "GenGeneral", "Generated"]
+testDriver = "test"
+
+# The main library: frontend → IR → passes → normalize → backend + codegen-correctness proofs, plus the
+# verified LCM/PDCE optimization developments, the Behavior preservation layer, and Analysis.Augmented.
+[[lean_lib]]
+name = "Solver"
+
+[[lean_lib]]
+name = "BaseLanguage"
+
+# Analysis specifications — the hand-authored prophecy/history ghost-variable specs (`analyses/<name>/
+# <Name>Defs.lean` [+ `<Name>DefsSub.lean`] + `<Name>.gsl`). Inputs to `lake exe gen`; the compiler's
+# transforms are parameterized over the `LcmSpec`/`PdceSpec` bundles these define. The `<Name>Clauses`
+# predicate is emitted by GenGeneral itself.
+# Same package as `BaseLanguage` (no `require` ⇒ no lib cycle); modules resolve as `analyses.<name>.<Name>Defs`.
+[[lean_lib]]
+name = "Analyses"
+# All authored analysis modules (`<Name>Defs`/`<Name>DefsSub`/`<Name>Adapter`) under `analyses/`, globbed —
+# adding an analysis needs no lakefile edit. (The `.gsl` specs are inputs to `gen`, not Lean modules.)
+globs = ["analyses.+"]
+
+# The compiler CLI: source text on stdin (or a file arg) → AArch64 assembler text on stdout.
+[[lean_exe]]
+name = "prophecyc"
+root = "Main"
+
+# Runnable test suite (`lake test`): parses + lowers sample programs and checks them against the
+# TAC reference interpreter.
+[[lean_exe]]
+name = "test"
+root = "Tests"
+srcDir = "test"
+
+
+# The analysis generator: drives the pure-data `GenGeneral` pipeline (`.gsl` → IR → term → files) to emit,
+# per analysis, `Solver/<name>/Solve.lean` + `Seam/<name>/{ValidExtremal,Augmented}.lean` for all 29 analyses.
+[[lean_exe]]
+name = "gen"
+root = "Gen"
+
+# The generator pipeline. Rooted at `GenGeneral.lean` + the `GenGeneral/` source tree: total parser → IR →
+# term/Wf printers → `Emit` → the `Driver` that the `gen` exe runs. Pure data + string emission;
+# instantiates the verified backend, never modifies it.
+[[lean_lib]]
+name = "GenGeneral"
+
+# Re-parses every shipped `.gsl` through the total parser + `Lower`, prints each ghost's inferred quadrant,
+# and fails on any parse error or accepted-malformed input. Does not emit.
+[[lean_exe]]
+name = "gengen-check"
+root = "CheckMain"
+srcDir = "test"
+
+# A spiky stress corpus (`stress/*.gsl`, 34 specs): bizarre / compound / deeply-nested / deliberately-malformed
+# specs that push the parser, lower, and quadrant selector to their edges. A regression GATE — each spec has
+# an expected lowers/rejects outcome and the exe exits nonzero on any deviation. See GenGeneralStress.lean.
+[[lean_exe]]
+name = "gengen-stress"
+root = "StressMain"
+srcDir = "stress"
+
+[[lean_lib]]
+# The seam interface: `*Clauses` predicates + `*SpecOf` adapters + concrete valid+extremal spec
+# instances. The ONLY library that imports the Solver directory (default andSubmodules of `Seam`).
+name = "Seam"
+globs = ["Seam", "Seam.+"]
+
+# The GENERATED output tree (`Generated/`), kept physically separate from all authored code. `lake exe gen`
+# writes here; the generated modules live under the dedicated `Generated.*` namespace
+# (`Generated.Solver.<name>.Solve`, `Generated.Seam.<name>.{ValidExtremal,Augmented}`) so nothing authored
+# shares a namespace with them. Byte-identity to `gen`'s output is the `gengen-check` gate. In
+# defaultTargets so the generated proofs are always checked.
+[[lean_lib]]
+name = "Generated"
+globs = ["Generated", "Generated.+"]
+
+# The two generator gates, exposed as libs so the `lake test` driver imports and runs them (they are
+# also standalone exes).
+[[lean_lib]]
+name = "Gates"
+srcDir = "test"
+globs = ["GenGeneralCheck"]
+
+[[lean_lib]]
+name = "Stress"
+srcDir = "stress"
+globs = ["GenGeneralStress"]

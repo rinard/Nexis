@@ -1,0 +1,188 @@
+-- Copyright (c) 2026 Martin Rinard
+import BaseLanguage.LCM.Correctness
+
+/-!
+# `BasicCov` — coverage lemmas for the *basic* LCM insert (isolated insertions permitted)
+
+The basic variant drops the `Used` analysis (`π_u`/`τ_u`): it inserts at every latest node/edge and replaces
+every numbered computation. Its insert sets are the optimal ones with `∩ τᵤ` removed, hence
+**supersets**: `insertBefore ⊆ insBefore'`, `insertOut ⊆ insOut'`, `insertAfter ⊆ insOut'`,
+`insertEdge ⊆ latestEdge`.
+
+## What this file establishes
+
+* **Fault safety (`π_u`-free).** `insBefore'_sub_anti`: every basic node insert is anticipated
+  (`insBefore' ⊆ latestNode ⊆ ηₚ ⊆ πₐ`), using the threaded `ηₚ ⊆ πₐ` invariant
+  (`postpSubAnti_step`, itself `π_u`-free). So the *extra* isolated inserts are down-safe — no new faults.
+
+* **Coverage.** `cov_implies_cov_basic`: the basic coverage `Cov_basic`
+  (keyed on computations `ue`) follows from `Cov` (keyed on `πᵤ`) via the `Used.check`
+  clause + the insert containments. `mstep_edge_sub`: the basic materialized set dominates the optimal one.
+  Together `Cov_basic_step` maintains basic coverage across a step by reusing `Cov_step_edge`.
+  (`Extremal S` stays a proof scaffold; the basic *transform* output uses no `π_u`.)
+
+* **Blast radius.** `match_step_assign` (in `Correctness/MatchStep.lean`) takes `_hpa : ηₚ ⊆ πₐ` and
+  `hcovered` (the covered-read obligation) and touches `πᵤ`/`recoverable` only via the `recoverable`-gate and `hcovered`, so porting to
+  the basic transform is: gate ⟶ `numbered`, `Cov ⟶ Cov_basic` (this file), everything else reused.
+
+`transform_preserves_halt_basic` and `transform_preserves_faulting_basic` are proved in `BasicCorrect.lean`:
+rather than a separately-defined basic transform (`insBefore'`/`insEdge'`), `BasicCorrect` runs the *optimal*
+`transform` against the `πᵤ`/`τᵤ`-widened bundle `mkBasic S`, so `match_step_assign`/`_ifz` are reused
+directly. The coverage and fault-safety obligations are discharged here.
+-/
+
+namespace BaseLanguage.Analyses.LCM
+open Tac Normalize Semantics Std
+
+variable {P : Program}
+
+/-! ## Basic insert quantities (τ_u = allExprs inlined = optimal insert with `∩ τᵤ` dropped) -/
+
+def insBefore' (S : LcmSpec P) (n : Node) : Assignments :=
+  Assignments.sdiff (latestNode P S.ηₚ S.τₚ n) (latestOut P S n)
+
+def insOut' (S : LcmSpec P) (n : Node) : Assignments :=
+  latestOut P S n
+
+/-- Basic coverage invariant — every *computation* not freshly placed at `n` is materialized in `M`. -/
+def Cov_basic (S : LcmSpec P) (n : Node) (M : Assignments) : Prop :=
+  Assignments.Subset (Assignments.sdiff (Assignments.sdiff (ue P n) (insBefore' S n)) (insOut' S n)) M
+
+/-- Basic materialized-set update across `c → c'` (τ_u-free; uses `insOut'` for the exit, `latestEdge` for the
+    edge — a *superset* of the optimal `Mstep_edge`, which is all coverage needs). -/
+def Mstep_edge' (S : LcmSpec P) (c c' : Node) (M : Assignments) : Assignments :=
+  Assignments.union
+    (Assignments.union (Assignments.inter (Assignments.union M (insBefore' S c)) (pass P c)) (insOut' S c))
+    (latestEdge P S.πₐ S.ηₐ S.ηₚ c c')
+
+/-! ## Fault safety of the basic (incl. isolated) node inserts, `π_u`-free -/
+
+theorem insBefore'_sub_anti (S : LcmSpec P) {n : Node}
+    (hpa : Assignments.Subset (S.ηₚ n) (S.πₐ n)) :
+    Assignments.Subset (insBefore' S n) (S.πₐ n) := by
+  intro e he
+  exact hpa e (latestNode_sub_postp S n e (Assignments.mem_sdiff.mp he).1)
+
+/-! ## Insert containments (basic ⊇ optimal) -/
+
+theorem insertBefore_sub_insBefore' (S : LcmSpec P) (n : Node) :
+    Assignments.Subset (insertBefore P S n) (insBefore' S n) := by
+  intro e he; unfold insertBefore at he; rw [Assignments.mem_inter] at he; exact he.1
+
+theorem insertOut_sub_insOut' (S : LcmSpec P) (n : Node) :
+    Assignments.Subset (insertOut P S n) (insOut' S n) := by
+  intro e he; unfold insertOut at he; rw [Assignments.mem_inter] at he; exact he.1
+
+theorem insertEdge_sub_latestEdge (S : LcmSpec P) (i j : Node) :
+    Assignments.Subset (insertEdge P S i j) (latestEdge P S.πₐ S.ηₐ S.ηₚ i j) := by
+  intro e he; unfold insertEdge at he; rw [Assignments.mem_inter] at he; exact he.1
+
+theorem insertAfter_sub_insOut' (S : LcmSpec P) (i : Node) :
+    Assignments.Subset (insertAfter P S i) (insOut' S i) := by
+  intro e he
+  unfold insertAfter at he; unfold insOut' latestOut
+  cases hf : P.fetch i with
+  | none => simp only [hf] at he; exact absurd he Std.HashSet.not_mem_empty
+  | some instr =>
+    cases instr with
+    | assign x ex next => simp only [hf] at he ⊢; rw [Assignments.mem_inter] at he; exact he.1
+    | noop next => simp only [hf] at he ⊢; rw [Assignments.mem_inter] at he; exact he.1
+    | ifz x z nz => simp only [hf] at he; exact absurd he Std.HashSet.not_mem_empty
+    | halt => simp only [hf] at he; exact absurd he Std.HashSet.not_mem_empty
+
+/-! ## A transparent numbered computation is on no out-edge (`π_u`-free; πᵤ by `replace_covered_basic`) -/
+
+theorem ue_transp_notLatestOut (S : LcmSpec P) {nd : Node} {x : Var} {e : Expr} {next : Node}
+    (hf : P.fetch nd = some (.assign x e next)) (hnum : isNumbered e = true)
+    (hnsr : exprReadsVar e x = false) :
+    e ∉ latestOut P S nd := by
+  have heall : e ∈ allExprs P := fetch_mem_allExprs hf hnum
+  have hcomp : e ∈ ue P nd := by
+    unfold ue; rw [hf]; simp only [hnum, if_true]; exact Assignments.mem_singleton.2 rfl
+  have htransp : e ∈ pass P nd := by
+    unfold pass; rw [Assignments.mem_filter']
+    exact ⟨heall, by simp [transpB, hf, instrDefVar, hnsr]⟩
+  have hde : e ∈ de P nd := Assignments.mem_inter.mpr ⟨hcomp, htransp⟩
+  have hav : e ∈ availableOut P S.ηₐ nd := by
+    unfold availableOut; rw [Assignments.mem_union]; exact Or.inl hde
+  have hnle : e ∉ latestEdge P S.πₐ S.ηₐ S.ηₚ nd next := by
+    intro hin
+    unfold latestEdge at hin
+    rw [Assignments.mem_sdiff] at hin
+    rcases Assignments.mem_union.mp hin.1 with hear | hcarry
+    · unfold earliest at hear
+      rw [Assignments.mem_inter, Assignments.mem_inter] at hear
+      have hnav : e ∉ availableOut P S.ηₐ nd := by
+        have := hear.1.2; unfold compl at this; exact (Assignments.mem_sdiff.mp this).2
+      exact hnav hav
+    · exact (Assignments.mem_sdiff.mp hcarry).2 hcomp
+  unfold latestOut; rw [hf]; exact hnle
+
+/-- **Replace read-validity for the basic gate.** The basic transform replaces *every* numbered
+    computation; the temp it reads is materialized before the control (`e0 ∈ M ∪ insBefore'`). A transparent
+    numbered `e0` is on no out-edge (`ue_transp_notLatestOut`), so if it isn't placed at the node entry,
+    `Cov_basic` puts it in `M`. `π_u`-free (no `S.πᵤ`, no `Extremal`). -/
+theorem replace_covered_basic (S : LcmSpec P) {nd : Node} {x : Var} {e0 : Expr} {next : Node} {M : Assignments}
+    (hf : P.fetch nd = some (.assign x e0 next)) (hnum : isNumbered e0 = true)
+    (hnsr : exprReadsVar e0 x = false) (hcov : Cov_basic S nd M) :
+    e0 ∈ M ∨ e0 ∈ insBefore' S nd := by
+  have hcomp : e0 ∈ ue P nd := by
+    unfold ue; rw [hf]; simp only [hnum, if_true]; exact Assignments.mem_singleton.2 rfl
+  by_cases hib : e0 ∈ insBefore' S nd
+  · exact Or.inr hib
+  · exact Or.inl (hcov e0 (Assignments.mem_sdiff.mpr
+      ⟨Assignments.mem_sdiff.mpr ⟨hcomp, hib⟩, ue_transp_notLatestOut S hf hnum hnsr⟩))
+
+/-! ## The coverage crux: `Cov ⇒ Cov_basic`, and maintenance by reuse -/
+
+/-- **`Cov_basic` follows from `Cov`.** Case `e ∈ used`: use `Cov` (insert containments discharge the
+    `∉ insertBefore`/`∉ insertOut` sides). Case `e ∉ πᵤ`: the `Used.check` clause forces `e ∈ latestNode`,
+    and `e ∉ insOut' = latestOut` puts it in `insBefore'` — contradicting the hypothesis. -/
+theorem cov_implies_cov_basic (S : LcmSpec P) {n : Node} {M : Assignments}
+    (hcov : Cov S n M) : Cov_basic S n M := by
+  intro e he
+  rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
+  obtain ⟨⟨hue, hnib'⟩, hnio'⟩ := he
+  by_cases hused : e ∈ S.πᵤ n
+  · exact hcov e (Assignments.mem_sdiff.mpr
+      ⟨Assignments.mem_sdiff.mpr ⟨hused, fun hib => hnib' (insertBefore_sub_insBefore' S n e hib)⟩,
+       fun hio => hnio' (insertOut_sub_insOut' S n e hio)⟩)
+  · have hln : e ∈ latestNode P S.ηₚ S.τₚ n := by
+      by_cases h : e ∈ latestNode P S.ηₚ S.τₚ n
+      · exact h
+      · exact absurd (S.isUsed.check n e (Assignments.mem_sdiff.mpr ⟨hue, h⟩)) hused
+    exact absurd (Assignments.mem_sdiff.mpr ⟨hln, hnio'⟩) hnib'
+
+/-- `Cov` is monotone in `M`. -/
+theorem cov_mono (S : LcmSpec P) {n : Node} {M M' : Assignments}
+    (h : Cov S n M) (hsub : Assignments.Subset M M') : Cov S n M' :=
+  fun e he => hsub e (h e he)
+
+/-- The optimal materialized update is contained in the basic one. -/
+theorem mstep_edge_sub (S : LcmSpec P) (c c' : Node) (M : Assignments) :
+    Assignments.Subset (Mstep_edge S c c' M) (Mstep_edge' S c c' M) := by
+  intro e he
+  unfold Mstep_edge Mstep Mstep_edge' at *
+  rw [Assignments.mem_union] at he ⊢
+  rcases he with hms | hedge
+  · left
+    rw [Assignments.mem_union] at hms ⊢
+    rcases hms with hbody | hafter
+    · left
+      rw [Assignments.mem_inter, Assignments.mem_union] at hbody ⊢
+      refine ⟨?_, hbody.2⟩
+      rcases hbody.1 with hM | hib
+      · exact Or.inl hM
+      · exact Or.inr (insertBefore_sub_insBefore' S c e hib)
+    · right; exact insertAfter_sub_insOut' S c e hafter
+  · right; exact insertEdge_sub_latestEdge S c c' e hedge
+
+/-- **Basic coverage maintenance.** Basic coverage is maintained across a step, by reusing `Cov_step_edge`.
+    Keeps `Extremal S` as a scaffold; the basic transform output uses no `π_u`. -/
+theorem Cov_basic_step (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) {c c' : Config} {M : Assignments}
+    (hstep : Step P c c') (hcov : Cov S c.node M) :
+    Cov_basic S c'.node (Mstep_edge' S c.node c'.node M) :=
+  cov_implies_cov_basic S
+    (cov_mono S (Cov_step_edge S hS wn hstep hcov) (mstep_edge_sub S c.node c'.node M))
+
+end BaseLanguage.Analyses.LCM

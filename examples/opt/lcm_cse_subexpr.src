@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+a := 4; b := 3; c := 2; x := a + b; y := a + b + c

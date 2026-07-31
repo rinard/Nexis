@@ -1,0 +1,23 @@
+-- Copyright (c) 2026 Martin Rinard
+-- BwdSlice.gsl — a backward-may PROGRAM SLICE analysis (the backward `image` atom carrier).
+-- `slice(n)` = the variables relevant on entry to `n`: a variable `z` is relevant if it is used to
+-- compute a variable that is relevant at the successor (the def→use flow run BACKWARD via the `image`
+-- atom), plus the criterion `crit(n)` (the program's observable/output variables `P.obs`) as the floor. A variable stops
+-- being carried once it is (re)defined here (`∖ defVars`). Direction WRITTEN (prophecy ⇒ backward); the
+-- quadrant (bwd·may) is INFERRED from `slice(n)` on the ⊆-right (bounded below / least fixpoint).
+-- Defs in `BwdSliceDefs`; `_sub` facts in `BwdSliceDefsSub`.
+
+include Tac.Locals
+
+include analyses.bwdslice.BwdSliceDefs
+
+analysis BwdSlice {
+
+  prophecy BwdSlice slice : Vars[Var] {              -- prophecy · may  ⇒  bwd·may
+    predict : ∀ n→n'. slice(n') ⊆ slice(n) ∪ definedVars(n)                  -- carry, killing the def at n
+    check   : ∀ n→n'. z ∈ slice(n)  when  ∃ y ∈ slice(n'). flowsBack(n)(y,z)  -- IMAGE (use→def, backward)
+    check   : ∀ n. crit(n) ⊆ slice(n)                                    -- the slicing-criterion floor
+    seed    : ∅ ⊆ slice(final)
+    within  : ∀ n. slice(n) ⊆ allVars
+  }
+}

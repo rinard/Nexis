@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 26 UnionGate — a gate whose singleton is a set UNION: `hot ∪ cold meets ug2(n)`. A compound gate
+-- singleton lowers to a `Leaf.union` and classifies (fwd·may). Pins the gate-singleton generalization.
+analysis UnionGateS {
+  history UnionGate ug2 : Nums[Nums] {
+    update : ∀ n→n'. ug2(n) ⊆ ug2(n')
+    always : ∀ n→n'. z ∈ ug2(n')  when  hot ∪ cold meets ug2(n)
+    seed   : ∅ ⊆ ug2(entry)
+    within : ∀ n. ug2(n) ⊆ allNums
+  }
+}

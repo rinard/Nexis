@@ -1,0 +1,14 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 29 DoubleClamp — a DOUBLY-clamped backward ghost: BOTH an unguarded ceiling (`dc ⊆ gen ∪ transp`) AND
+-- an unguarded floor (`condExprs ⊆ dc`). The verified `resBMC` solver admits this (cap-the-transfer), but
+-- the emit path is not yet wired, so lowering must REJECT it with a located error — never silently keep
+-- the first clamp (which would flip the quadrant). Pins the ">1 unguarded clamp" totality guard.
+analysis DoubleClampS {
+  prophecy DoubleClamp dc : Exprs[Expr] {
+    predict : ∀ n→n'. dc(n) ∖ genExprs(n) ⊆ dc(n')
+    check   : ∀ n. dc(n) ⊆ genExprs(n) ∪ transpExprs(n)
+    check   : ∀ n. condExprs(n) ⊆ dc(n)
+    seed    : dc(final) ⊆ ∅
+    within  : ∀ n. dc(n) ⊆ allExprs
+  }
+}

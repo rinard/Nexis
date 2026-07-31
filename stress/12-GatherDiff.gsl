@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 12 GatherDiff — a gather whose sub-expression is itself a set DIFFERENCE: `needs(z) ∖ base(z) ⊆ gd(n)`.
+-- Stresses: a compound SetExpr (with `∖`) inside a gather-atom's left side — the atom's `sub` is not a
+-- bare family but a computed set per element.
+analysis GatherDiffS {
+  history GatherDiff gd : Nums[Nums] {
+    update : ∀ n→n'. gd(n) ⊆ gd(n')
+    always : ∀ n→n'. z ∈ gd(n')  when  needs(z) ∖ base(z) ⊆ gd(n)
+    seed   : ∅ ⊆ gd(entry)
+    within : ∀ n. gd(n) ⊆ allNums
+  }
+}

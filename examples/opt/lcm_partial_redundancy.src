@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+if c { y := a + b } else { skip }; z := a + b

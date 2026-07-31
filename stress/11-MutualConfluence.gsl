@@ -1,0 +1,8 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 11 MutualConfluence — a CYCLIC confluence: `a` meets `b`, `b` meets `a` — the dep-DAG has a 2-cycle,
+-- which no topological order resolves. Stresses: cycle handling in the foreign-dependency ordering (the
+-- current classifier reads each as a `meet` independently; a real emitter must detect the cycle).
+analysis MutualConfluence {
+  prophecy A a : Exprs[Expr] { predict : ∀ n→n'. a(n) ⊆ b(n')  within : ∀ n. a(n) ⊆ allExprs }
+  prophecy B b : Exprs[Expr] { predict : ∀ n→n'. b(n) ⊆ a(n')  within : ∀ n. b(n) ⊆ allExprs }
+}

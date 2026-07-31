@@ -1,0 +1,19 @@
+-- Copyright (c) 2026 Martin Rinard
+-- DcBwdMust.gsl — DOUBLY-CLAMPED DEMONSTRATOR (backward·must, cap-the-transfer `resBMC`).
+-- A backward-must ghost carrying BOTH a floor (`dcbmLo ⊆ db`) and a ceiling (`db ⊆ dcbmHi`). The clamp no
+-- longer signals the quadrant, so the extremal is read from the propagation orientation — the pure carrier
+-- `db(n) ⊆ db(n')` (output self `db(n)` on the subset side ⇒ must). Routes to `resBMC` with the authored
+-- band `dcbmLo ⊆ dcbmHi` (DcBwdMustDefsSub). Its purpose is to keep the axiom-clean gate covering the
+-- doubly-clamped emit path (no other corpus instance).
+include Tac.Locals
+include analyses.dcbwdmust.DcBwdMustDefs
+
+analysis DcBwdMust {
+  prophecy DcBwdMust db : Exprs[Expr] {
+    predict : ∀ n→n'. db(n) ⊆ db(n')
+    check   : ∀ n. db(n) ⊆ dcbmHi(n)
+    check   : ∀ n. dcbmLo(n) ⊆ db(n)
+    seed    : db(final) ⊆ ∅
+    within  : ∀ n. db(n) ⊆ allExprs
+  }
+}

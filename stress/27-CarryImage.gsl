@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 27 CarryImage — a COMPOUND guarded-base (`ci ∪ bornNums`, a carry plus a gen) unioned with an image
+-- atom guard — the shipped `taint` shape, at the corpus level. The `update` base is any monotone
+-- set-expr (`var ∪ const`), not just `var`/single-gen. Lowers fwd·may.
+analysis CarryImageS {
+  history CarryImage ci : Nums[Nums] {
+    update : ∀ n→n'. ci(n) ∪ bornNums(n) ⊆ ci(n')
+    always : ∀ n→n'. z ∈ ci(n')  when  ∃ y ∈ ci(n). flowsN(n)(y,z)
+    seed   : ∅ ⊆ ci(entry)
+    within : ∀ n. ci(n) ⊆ allNums
+  }
+}

@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- AnticDefs.gsl — GSL surface for anticdefs (§3 grammar, explicit node form).  prophecy · must ⇒ bwd·must.
+include Tac.Locals
+
+analysis AnticDefs {
+  prophecy AnticDefs antic : Defs[Node] {
+    predict : ∀ n→n'. antic(n) ∖ genDefs(n) ⊆ antic(n')
+    check   : ∀ n. antic(n) ⊆ genDefs(n) ∪ transpDefs(n)
+    seed    : antic(final) ⊆ ∅
+    within  : ∀ n. antic(n) ⊆ allDefs
+  }
+}

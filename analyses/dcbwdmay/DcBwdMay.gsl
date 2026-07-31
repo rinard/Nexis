@@ -1,0 +1,16 @@
+-- Copyright (c) 2026 Martin Rinard
+-- DcBwdMay.gsl — DOUBLY-CLAMPED DEMONSTRATOR (backward·may, cap-the-transfer `resBmC`).
+-- Backward-may with BOTH clamps; the pure carrier `dy(n') ⊆ dy(n)` (output self `dy(n)` on the SUPERSET
+-- side ⇒ may) fixes the quadrant; the band `dcbmayLo ⊆ dcbmayHi` routes to `resBmC`.
+include Tac.Locals
+include analyses.dcbwdmay.DcBwdMayDefs
+
+analysis DcBwdMay {
+  prophecy DcBwdMay dy : Exprs[Expr] {
+    predict : ∀ n→n'. dy(n') ⊆ dy(n)
+    check   : ∀ n. dy(n) ⊆ dcbmayHi(n)
+    check   : ∀ n. dcbmayLo(n) ⊆ dy(n)
+    seed    : ∅ ⊆ dy(final)
+    within  : ∀ n. dy(n) ⊆ allExprs
+  }
+}

@@ -1,0 +1,15 @@
+-- Copyright (c) 2026 Martin Rinard
+-- FwdCeil.gsl — LONE FORWARD CEILING demonstrator (`resFMC` with a defaulted `∅` floor).
+-- A forward (`history`) ghost with a single unguarded ceiling `fc ⊆ genExprs`. No forward single-clamp
+-- solver exists, so lowering routes it to the doubly-clamped `resFMC` with the floor defaulted to `∅`.
+-- The pure carrier `fc(n') ⊆ fc(n)` (output self `fc(n')` on the subset side ⇒ must) fixes the quadrant.
+include Tac.Locals
+
+analysis FwdCeil {
+  history FwdCeil fc : Exprs[Expr] {
+    update : ∀ n→n'. fc(n') ⊆ fc(n)
+    check  : ∀ n. fc(n) ⊆ genExprs(n)
+    seed   : fc(entry) ⊆ ∅
+    within : ∀ n. fc(n) ⊆ allExprs
+  }
+}

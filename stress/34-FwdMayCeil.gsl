@@ -1,0 +1,10 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 34 FwdMayCeil — fwd·MAY carrier with a lone CEILING ⇒ resFmC (floor defaulted to ∅).
+analysis FwdMayCeilS {
+  history FwdMayCeil fmc : Exprs[Expr] {
+    update : ∀ n→n'. fmc(n) ⊆ fmc(n')
+    check  : ∀ n. fmc(n) ⊆ ceilExprs(n)
+    seed   : ∅ ⊆ fmc(entry)
+    within : ∀ n. fmc(n) ⊆ allExprs
+  }
+}

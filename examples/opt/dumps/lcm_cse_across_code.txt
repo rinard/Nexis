@@ -1,0 +1,320 @@
+### lcm_cse_across_code
+source: a := 4; b := 3; c := 2; d := 5; y := a + b; p := c * d; q := c + d; z := a + b
+
+========== [1/3] IR — before optimization ==========
+entry = L9
+  L0: halt
+  L1: a := 4    → L2
+  L2: b := 3    → L3
+  L3: c := 2    → L4
+  L4: d := 5    → L5
+  L5: y := a + b    → L6
+  L6: p := c * d    → L7
+  L7: q := c + d    → L8
+  L8: z := a + b    → L0
+> L9: noop    → L1
+
+obs = [a, b, c, d, y, p, q, z]
+
+========== [2/3] IR — after optimization (LCM + PDCE + cleanup), fed to codegen ==========
+entry = L5
+  L0: y := t1    → L1
+  L1: q := c + d    → L2
+  L2: z := t1    → L3
+  L3: p := c * d    → L4
+  L4: halt
+> L5: a := 4    → L6
+  L6: b := 3    → L7
+  L7: t1 := a + b    → L8
+  L8: d := 5    → L9
+  L9: c := 2    → L0
+
+obs = [a, b, c, d, y, p, q, z]
+
+========== [3/3] generated AArch64 assembly ==========
+.text
+.globl _main
+.p2align 2
+_main:
+  sub sp, sp, #96
+  stp x29, x30, [sp]
+  mov x29, sp
+  str xzr, [x29, #16]
+  str xzr, [x29, #24]
+  str xzr, [x29, #32]
+  str xzr, [x29, #40]
+  str xzr, [x29, #48]
+  str xzr, [x29, #56]
+  str xzr, [x29, #64]
+  str xzr, [x29, #72]
+  str xzr, [x29, #80]
+  b L40
+L0:
+  ldr x9, [x29, #24]
+L1:
+  str x9, [x29, #16]
+L2:
+  b L8
+L3:
+  bl _abort
+L4:
+  bl _abort
+L5:
+  bl _abort
+L6:
+  bl _abort
+L7:
+  bl _abort
+L8:
+  ldr x9, [x29, #40]
+L9:
+  ldr x10, [x29, #48]
+L10:
+  add x9, x9, x10
+L11:
+  str x9, [x29, #32]
+L12:
+  b L16
+L13:
+  bl _abort
+L14:
+  bl _abort
+L15:
+  bl _abort
+L16:
+  ldr x9, [x29, #24]
+L17:
+  str x9, [x29, #56]
+L18:
+  b L24
+L19:
+  bl _abort
+L20:
+  bl _abort
+L21:
+  bl _abort
+L22:
+  bl _abort
+L23:
+  bl _abort
+L24:
+  ldr x9, [x29, #40]
+L25:
+  ldr x10, [x29, #48]
+L26:
+  mul x9, x9, x10
+L27:
+  str x9, [x29, #64]
+L28:
+  b L32
+L29:
+  bl _abort
+L30:
+  bl _abort
+L31:
+  bl _abort
+L32:
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr0@PAGE
+  add x8, x8, ostr0@PAGEOFF
+  ldr x9, [x29, #72]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr1@PAGE
+  add x8, x8, ostr1@PAGEOFF
+  ldr x9, [x29, #80]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr2@PAGE
+  add x8, x8, ostr2@PAGEOFF
+  ldr x9, [x29, #40]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr3@PAGE
+  add x8, x8, ostr3@PAGEOFF
+  ldr x9, [x29, #48]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr4@PAGE
+  add x8, x8, ostr4@PAGEOFF
+  ldr x9, [x29, #16]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr5@PAGE
+  add x8, x8, ostr5@PAGEOFF
+  ldr x9, [x29, #64]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr6@PAGE
+  add x8, x8, ostr6@PAGEOFF
+  ldr x9, [x29, #32]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr7@PAGE
+  add x8, x8, ostr7@PAGEOFF
+  ldr x9, [x29, #56]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  mov w0, #0
+  ldp x29, x30, [sp]
+  add sp, sp, #96
+  ret
+L33:
+  bl _abort
+L34:
+  bl _abort
+L35:
+  bl _abort
+L36:
+  bl _abort
+L37:
+  bl _abort
+L38:
+  bl _abort
+L39:
+  bl _abort
+L40:
+  ldr x9, =4
+L41:
+  str x9, [x29, #72]
+L42:
+  b L48
+L43:
+  bl _abort
+L44:
+  bl _abort
+L45:
+  bl _abort
+L46:
+  bl _abort
+L47:
+  bl _abort
+L48:
+  ldr x9, =3
+L49:
+  str x9, [x29, #80]
+L50:
+  b L56
+L51:
+  bl _abort
+L52:
+  bl _abort
+L53:
+  bl _abort
+L54:
+  bl _abort
+L55:
+  bl _abort
+L56:
+  ldr x9, [x29, #72]
+L57:
+  ldr x10, [x29, #80]
+L58:
+  add x9, x9, x10
+L59:
+  str x9, [x29, #24]
+L60:
+  b L64
+L61:
+  bl _abort
+L62:
+  bl _abort
+L63:
+  bl _abort
+L64:
+  ldr x9, =5
+L65:
+  str x9, [x29, #48]
+L66:
+  b L72
+L67:
+  bl _abort
+L68:
+  bl _abort
+L69:
+  bl _abort
+L70:
+  bl _abort
+L71:
+  bl _abort
+L72:
+  ldr x9, =2
+L73:
+  str x9, [x29, #40]
+L74:
+  b L0
+L75:
+  bl _abort
+L76:
+  bl _abort
+L77:
+  bl _abort
+L78:
+  bl _abort
+L79:
+  bl _abort
+L80:
+  bl _abort
+L81:
+  bl _abort
+L82:
+  bl _abort
+L83:
+  bl _abort
+L84:
+  bl _abort
+L85:
+  bl _abort
+L86:
+  bl _abort
+L87:
+  bl _abort
+.section __TEXT,__cstring
+lfmt: .asciz "%s=%lld\n"
+ostr0: .asciz "a"
+ostr1: .asciz "b"
+ostr2: .asciz "c"
+ostr3: .asciz "d"
+ostr4: .asciz "y"
+ostr5: .asciz "p"
+ostr6: .asciz "q"
+ostr7: .asciz "z"

@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 04 NestedGuard — PARENTHESIZED guard: (gather ∧ gate) ∨ (gather ∧ gate). Distributed monotone DNF.
+-- Stresses: explicit guard grouping `( … )`, two independent conjunctive clauses OR'd, four atoms total,
+-- two distinct gates over different singletons (tagA/tagB).
+analysis NestedGuardS {
+  history NestedGuard q : Vals[Vals] {
+    update : ∀ n→n'. q(n) ⊆ q(n')
+    always : ∀ n→n'. z ∈ q(n')  when  (below(z) ⊆ q(n) ∧ tagA meets q(n)) ∨ (above(z) ⊆ q(n) ∧ tagB meets q(n))
+    seed   : ∅ ⊆ q(entry)
+    within : ∀ n. q(n) ⊆ allVals
+  }
+}

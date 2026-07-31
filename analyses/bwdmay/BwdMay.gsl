@@ -1,0 +1,21 @@
+-- Copyright (c) 2026 Martin Rinard
+-- BwdMay.gsl — a NON-DIAMOND backward-may liveness analysis (general `predict`, least fixpoint).
+-- The bwd·may counterpart of BwdChain: `m(n)` = the definition-nodes live at `n`, bounded from below by
+-- `genDefs(n) ∪ (m(n') ∩ transpDefs(n)) ∪ extraM(n)` with a floor clamp. `extraM` = the OBSERVABLE definitions
+-- (always live) — the non-diamond third term, driving the general backward path (`lowerSetExpr` + the
+-- `flowBwd` pass-through). Direction WRITTEN (prophecy); quadrant (bwd·may) INFERRED from `m(n)` on the
+-- ⊆-right (bounded below). Defs `BwdMayDefs`; `_sub` `BwdMayDefsSub`.
+
+include Tac.Locals
+
+include analyses.bwdmay.BwdMayDefs
+
+analysis BwdMay {
+
+  prophecy BwdMay m : Defs[Node] {                   -- prophecy · may  ⇒  bwd·may
+    predict : ∀ n→n'. genDefs(n) ∪ (m(n') ∩ transpDefs(n)) ∪ extraM(n) ⊆ m(n)   -- arbitrary monotone transfer
+    check   : ∀ n. floorM(n) ⊆ m(n)                                       -- the floor clamp
+    seed    : ∅ ⊆ m(final)
+    within  : ∀ n. m(n) ⊆ allDefs
+  }
+}

@@ -1,0 +1,8 @@
+// Copyright (c) 2026 Martin Rinard
+// Collatz: number of steps for n to reach 1.
+n := 27;
+steps := 0;
+while n > 1 {
+  if n & 1 { n := 3 * n + 1 } else { n := n / 2 };
+  steps := steps + 1
+}

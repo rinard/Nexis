@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- VeryBusy.gsl — GSL surface for verybusy (§3 grammar, explicit node form).  prophecy · must ⇒ bwd·must.
+include Tac.Locals
+
+analysis VeryBusy {
+  prophecy VeryBusy busy : Exprs[Expr] {
+    predict : ∀ n→n'. busy(n) ∖ genExprs(n) ⊆ busy(n')
+    check   : ∀ n. busy(n) ⊆ genExprs(n) ∪ transpExprs(n)
+    seed    : busy(final) ⊆ ∅
+    within  : ∀ n. busy(n) ⊆ allExprs
+  }
+}

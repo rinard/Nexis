@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+n := 5; i := 0; sum := 0; while i < n { if i < 3 { sum := sum + i } else { sum := sum + 10 }; i := i + 1 }

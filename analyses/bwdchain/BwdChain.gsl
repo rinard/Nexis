@@ -1,0 +1,21 @@
+-- Copyright (c) 2026 Martin Rinard
+-- BwdChain.gsl — a NON-DIAMOND backward-must anticipation analysis (general `predict`).
+-- `g(n)` = the definition-nodes anticipated at `n`: the local gen `genN`, the anticipated-and-transparent
+-- successors `g(n') ∩ transpDefs(n)`, AND `extraN(n)` = the OBSERVABLE definitions (never dead). That third
+-- union term is past the canonical `gen ∪ (self' ∩ kill)` diamond, so it drives the general backward path
+-- (`lowerSetExpr` for `predict` + the `flowBwd` pass-through). Direction WRITTEN (prophecy ⇒ backward);
+-- the quadrant (bwd·must) is INFERRED from `g(n)` on the ⊆-left. Defs `BwdChainDefs`; `_sub` `BwdChainDefsSub`.
+
+include Tac.Locals
+
+include analyses.bwdchain.BwdChainDefs
+
+analysis BwdChain {
+
+  prophecy BwdChain g : Defs[Node] {                 -- prophecy · must  ⇒  bwd·must
+    predict : ∀ n→n'. g(n) ⊆ genDefs(n) ∪ (g(n') ∩ transpDefs(n)) ∪ extraN(n)   -- arbitrary monotone transfer
+    check   : ∀ n. g(n) ⊆ ceilN(n)                                        -- the ceiling clamp
+    seed    : g(final) ⊆ ∅
+    within  : ∀ n. g(n) ⊆ allDefs
+  }
+}

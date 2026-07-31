@@ -1,0 +1,16 @@
+-- Copyright (c) 2026 Martin Rinard
+-- DcFwdMay.gsl — DOUBLY-CLAMPED DEMONSTRATOR (forward·may, cap-the-transfer `resFmC`).
+-- Forward-may with BOTH clamps; the pure carrier `dm(n) ⊆ dm(n')` (output self `dm(n')` on the SUPERSET
+-- side ⇒ may) fixes the quadrant; the band `dcfmayLo ⊆ dcfmayHi` routes to `resFmC`.
+include Tac.Locals
+include analyses.dcfwdmay.DcFwdMayDefs
+
+analysis DcFwdMay {
+  history DcFwdMay dm : Exprs[Expr] {
+    update : ∀ n→n'. dm(n) ⊆ dm(n')
+    check  : ∀ n. dm(n) ⊆ dcfmayHi(n)
+    check  : ∀ n. dcfmayLo(n) ⊆ dm(n)
+    seed   : ∅ ⊆ dm(entry)
+    within : ∀ n. dm(n) ⊆ allExprs
+  }
+}

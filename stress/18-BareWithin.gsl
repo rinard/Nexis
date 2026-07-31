@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 18 BareWithin — the DEGENERATE surface forms: a bare `within allExprs` (no `∀ n.`, no `⊆`) and a bare
+-- `∅` seed. Stresses: the optional-quantifier / bare-universe branches of the grammar that the shipped
+-- specs always write explicitly.
+analysis BareWithinS {
+  history BareWithin bw : Exprs[Expr] {
+    update : ∀ n→n'. bw(n') ⊆ genExprs(n) ∪ (bw(n) ∩ transpExprs(n))
+    seed   : bw(entry) ⊆ ∅
+    within allExprs
+  }
+}

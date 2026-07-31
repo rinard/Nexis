@@ -1,0 +1,22 @@
+-- Copyright (c) 2026 Martin Rinard
+-- GatedLive.gsl — a backward-may GATED-LIVENESS analysis (the SET-LEVEL `gate` atom, evs-form).
+-- `glive(n)` = the variables live on entry to `n`. A variable stays live going backward unless it is
+-- (re)defined here (`∖ defVars`); the operands `rhsVars(n)` of an assignment become live WHEN its defined
+-- variable is live at the successor (the SET-LEVEL gate `rhsVars ⊆ glive when defVars meets glive'`); and
+-- the branch conditions `condVars(n)` are always live (the floor). Same shape as `live`, but emitted in the
+-- general evs-form (no authored predicate) — so it exercises the set-level gate through `printEvs`.
+-- Direction WRITTEN (prophecy ⇒ backward); quadrant (bwd·may) INFERRED from `glive(n)` on the ⊆-right.
+-- Defs in `GatedLiveDefs`; `_sub` facts in `GatedLiveDefsSub`.
+
+include Tac.Locals
+
+analysis GatedLive {
+
+  prophecy GatedLive glive : Vars[Var] {            -- prophecy · may  ⇒  bwd·may
+    predict : ∀ n→n'. glive(n') ⊆ glive(n) ∪ definedVars(n)                  -- carry, killing the def at n
+    check   : ∀ n→n'. rhsVars(n) ⊆ glive(n)  when  definedVars(n) meets glive(n')  -- SET-LEVEL gate
+    check   : ∀ n. condVars(n) ⊆ glive(n)                                -- branch-condition floor
+    seed    : ∅ ⊆ glive(final)
+    within  : ∀ n. glive(n) ⊆ allVars
+  }
+}

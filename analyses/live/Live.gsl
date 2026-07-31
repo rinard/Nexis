@@ -1,0 +1,21 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Live.gsl — the GSL surface for standalone live-variable analysis (bwd·may · gate).
+-- The one-ghost reference analysis for the meets-form gate: a variable is live at n if it is used before
+-- being redefined.  Direction is WRITTEN (prophecy ⇒ backward); the quadrant (bwd·may) is INFERRED.
+-- Defs (useV/defV/usedVars/rhsVars/defVars/condVars/allVars/liveSeed) live in LiveDefs.lean; their
+-- ⊆-universe `_sub` facts in LiveDefsSub.lean.  Replaces the reflection-driven LiveLowered surface: the
+-- guarded `check` is the discriminant-free MEETS-form (`defVars(n) meets live(n')`), equivalent to the
+-- old `needed` helper (defVars(n) is a singleton, so `∃ x ∈ defVars(n), x ∈ live(n')` ⟺ `defV(n) ∈ live(n')`).
+
+include analyses.live.LiveDefs
+
+analysis Live {
+
+  prophecy Live live : Vars[Var] {                  -- prophecy · may  ⇒  bwd·may
+    predict : ∀ n→n'. live(n') ⊆ live(n) ∪ defVars(n)                        -- propagation (kill def)
+    check   : ∀ n→n'. rhsVars(n) ⊆ live(n)  when  defVars(n) meets live(n')  -- GUARDED ⇒ gate (faint-aware)
+    check   : ∀ n. condVars(n) ⊆ live(n)                                     -- unguarded ⇒ floor (lo clamp)
+    seed    : liveSeed ⊆ live(final)
+    within  : ∀ n. live(n) ⊆ allVars
+  }
+}

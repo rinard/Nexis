@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 20 HugeConj — an EXTREME conjunction width: a SEVEN-way `∧` chain of gather atoms in one guard.
+-- Stresses: right-nested `∧` depth, `collectParams`/term-printer scaling, seven distinct sub-families
+-- sharing a universe (a monotone AND-gather of high arity).
+analysis HugeConjS {
+  history HugeConj hc : Nums[Nums] {
+    update : ∀ n→n'. hc(n) ⊆ hc(n')
+    always : ∀ n→n'. z ∈ hc(n')  when  a1(z) ⊆ hc(n) ∧ a2(z) ⊆ hc(n) ∧ a3(z) ⊆ hc(n) ∧ a4(z) ⊆ hc(n) ∧ a5(z) ⊆ hc(n) ∧ a6(z) ⊆ hc(n) ∧ a7(z) ⊆ hc(n)
+    seed   : ∅ ⊆ hc(entry)
+    within : ∀ n. hc(n) ⊆ allNums
+  }
+}

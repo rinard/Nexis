@@ -1,0 +1,14 @@
+-- Copyright (c) 2026 Martin Rinard
+-- FwdMustFloor.gsl — fwd·MUST with a lone FLOOR ⇒ `resFMC` with the ceiling defaulted to the universe.
+-- Exercises the (resFMC × univ-default-ceiling) corner: the `must` carrier `fmf(n') ⊆ fmf(n)` fixes the
+-- quadrant, and the lone floor `genExprs ⊆ fmf` (opposite polarity to must) caps the transfer from below.
+include Tac.Locals
+
+analysis FwdMustFloor {
+  history FwdMustFloor fmf : Exprs[Expr] {
+    update : ∀ n→n'. fmf(n') ⊆ fmf(n)
+    check  : ∀ n. genExprs(n) ⊆ fmf(n)
+    seed   : fmf(entry) ⊆ ∅
+    within : ∀ n. fmf(n) ⊆ allExprs
+  }
+}

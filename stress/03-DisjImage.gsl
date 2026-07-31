@@ -1,0 +1,13 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 03 DisjImage — a DISJUNCTIVE guard mixing a relational image with a gather: image ∨ gather.
+-- `z ∈ r(n')  when  (∃ y ∈ r(n). flowsTo(n)(y,z))  ∨  deps(z) ⊆ r(n)`.
+-- Stresses: `∃`-image with a node-indexed relation `flowsTo(n)(y,z)`, `∨` between a per-element image and
+-- a per-element gather, and a NAMED seed (rootVals) at entry.
+analysis DisjImageS {
+  history DisjImage r : Vals[Vals] {
+    update : ∀ n→n'. r(n) ⊆ r(n')
+    always : ∀ n→n'. z ∈ r(n')  when  ∃ y ∈ r(n). flowsTo(n)(y,z) ∨ deps(z) ⊆ r(n)
+    seed   : rootVals ⊆ r(entry)
+    within : ∀ n. r(n) ⊆ allVals
+  }
+}

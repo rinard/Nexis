@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+a := 4; b := 3; c := 2; d := 5; y := a + b; p := c * d; q := c + d; z := a + b

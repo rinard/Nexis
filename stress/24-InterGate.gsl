@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 24 InterGate — a gate whose singleton is a set INTERSECTION: `hot ∩ cold meets ig2(n)`. Like the
+-- gather-sub, the gate singleton generalizes to a `Leaf` for `∪`/`∖` but NOT `∩`, so the totality
+-- contract must reject it with a located error.
+analysis InterGateS {
+  history InterGate ig2 : Nums[Nums] {
+    update : ∀ n→n'. ig2(n) ⊆ ig2(n')
+    always : ∀ n→n'. z ∈ ig2(n')  when  hot ∩ cold meets ig2(n)
+    seed   : ∅ ⊆ ig2(entry)
+    within : ∀ n. ig2(n) ⊆ allNums
+  }
+}

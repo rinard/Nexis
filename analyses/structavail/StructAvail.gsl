@@ -1,0 +1,22 @@
+-- Copyright (c) 2026 Martin Rinard
+-- StructAvail.gsl — a forward-must DATA-DEPENDENCY availability analysis (the `gather` atom carrier).
+-- A definition-node `z` is available at `n'` once either it is a LEAF computation (`localGen` = the def
+-- made at `n`, but only when `n` has no data-dependencies) OR every node defining one of `z`'s operands
+-- (`structSub(z)`) is already available in the incoming `avail(n)` — the AND-gather closing availability
+-- up the data-dependency DAG. Restricting `localGen` to leaves is what makes the gather load-bearing (a
+-- derived computation is available ONLY via the gather). Direction WRITTEN (history ⇒ forward); the
+-- quadrant (fwd·must) is INFERRED from `avail(n')` on the ⊆-left. Defs/`_sub` in `StructAvailDefs(Sub)`.
+
+include Tac.Locals
+
+include analyses.structavail.StructAvailDefs
+
+analysis StructAvail {
+
+  history StructAvail avail : Defs[Node] {           -- history · must  ⇒  fwd·must
+    update : ∀ n→n'. avail(n') ⊆ localGen(n)                             -- gen (const summand)
+    always : ∀ n→n'. z ∈ avail(n')  when  structSub(z) ⊆ avail(n)       -- GATHER (AND-gather atom)
+    seed   : avail(entry) ⊆ ∅
+    within : ∀ n. avail(n) ⊆ allDefs
+  }
+}

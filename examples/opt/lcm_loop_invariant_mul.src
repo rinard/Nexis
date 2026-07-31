@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+n := 4; k := 3; i := 0; s := 0; while i < n { s := s + k * n; i := i + 1 }

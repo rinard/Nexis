@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- AvailDefs.gsl — GSL surface for availdefs (§3 grammar, explicit node form).  history · must ⇒ fwd·must.
+include Tac.Locals
+
+analysis AvailDefs {
+  history AvailDefs avail : Defs[Node] {
+    update : ∀ n→n'. avail(n') ⊆ genDefs(n) ∪ (avail(n) ∩ transpDefs(n))
+    seed   : avail(entry) ⊆ ∅
+    within : ∀ n. avail(n) ⊆ allDefs
+  }
+}

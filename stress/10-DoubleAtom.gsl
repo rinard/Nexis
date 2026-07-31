@@ -1,0 +1,17 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 10 DoubleAtom — the MOST spiky: a single bwd·may carrier bearing THREE distinct guarded conditions
+-- (a per-element gather, a per-element image, a set-level gate) PLUS an unguarded floor clamp — every
+-- guarded summand riding on one propagation. Stresses: multiple guarded `check`s on one ghost (the current
+-- lowering handles at most one guarded + one unguarded — this deliberately exceeds it), mixed per-element
+-- and set-level guards, image reading the SUCCESSOR incoming (`da(n')`, prophecy), and a named halt seed.
+analysis DoubleAtomS {
+  prophecy DoubleAtom da : Vals[Vals] {
+    predict : ∀ n→n'. da(n') ⊆ da(n) ∪ bornVals(n)
+    check   : ∀ n→n'. z ∈ da(n)  when  kids(z) ⊆ da(n')
+    check   : ∀ n→n'. z ∈ da(n)  when  ∃ y ∈ da(n'). reaches(n)(y,z)
+    check   : ∀ n→n'. sinkVals(n) ⊆ da(n)  when  triggers(n) meets da(n')
+    check   : ∀ n. floorVals(n) ⊆ da(n)
+    seed    : seedVals ⊆ da(final)
+    within  : ∀ n. da(n) ⊆ allVals
+  }
+}

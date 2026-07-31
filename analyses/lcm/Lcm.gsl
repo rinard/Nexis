@@ -1,0 +1,47 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Lcm.gsl — the GSL surface for LCM/PRE (§3 grammar, explicit node form).
+-- Six ghosts spanning three of the four quadrants (bwd·must, fwd·must, bwd·may — no fwd·may) plus both
+-- transfer confluences (τₚ meet of ηₚ, τᵤ join of πᵤ).  `earliest` reads ¬πₐ(n) directly on its
+-- ¬availableOut frontier (valid because LCM correctness is extremal-only).  Node-locals ue/pass/de + the KRS
+-- placements earliest/latestNode/latestEdge are the analysis's own (LcmDefs); universe allExprs.
+-- A τ ghost is a `predict` whose RHS has a single FOREIGN occurrence ⇒ meet (self ⊆ X') or join (X' ⊆ self).
+
+include analyses.lcm.LcmDefs
+
+analysis LCM {
+
+  prophecy Anticipated πₐ : Assignments[Expr] {         -- prophecy · must  ⇒  bwd·must
+    predict : ∀ n→n'. πₐ(n) ∖ ue(n) ⊆ πₐ(n')
+    check   : ∀ n. πₐ(n) ⊆ ue(n) ∪ pass(n)
+    seed    : πₐ(final) ⊆ haltSeed
+    within  : ∀ n. πₐ(n) ⊆ allExprs
+  }
+
+  history Available ηₐ : Assignments[Expr] {           -- history · must  ⇒  fwd·must
+    update : ∀ n→n'. ηₐ(n') ⊆ de(n) ∪ (ηₐ(n) ∩ pass(n))
+    seed   : ηₐ(entry) ⊆ entrySeed
+    within : ∀ n. ηₐ(n) ⊆ allExprs
+  }
+
+  history Postponable ηₚ : Assignments[Expr] {         -- history · must, edge gen
+    update : ∀ n→n'. ηₚ(n') ⊆ earliest(πₐ,ηₐ)(n,n') ∪ (ηₚ(n) ∖ ue(n))
+    seed   : ηₚ(entry) ⊆ entrySeed
+    within : ∀ n. ηₚ(n) ⊆ allExprs
+  }
+
+  prophecy TauP τₚ : Assignments[Expr] {                -- MEET of ηₚ
+    predict : ∀ n→n'. τₚ(n) ⊆ ηₚ(n')
+    within  : ∀ n. τₚ(n) ⊆ allExprs
+  }
+
+  prophecy Used πᵤ : Assignments[Expr] {                -- prophecy · may, edge kill  ⇒  bwd·may
+    predict : ∀ n→n'. πᵤ(n') ⊆ πᵤ(n) ∪ ( latestNode(ηₚ,τₚ)(n') ∪ latestEdge(πₐ,ηₐ,ηₚ)(n,n') )
+    check   : ∀ n. ue(n) ∖ latestNode(ηₚ,τₚ)(n) ⊆ πᵤ(n)
+    within  : ∀ n. πᵤ(n) ⊆ allExprs
+  }
+
+  prophecy UsedOut τᵤ : Assignments[Expr] {          -- JOIN of πᵤ  (foreign πᵤ' ⊆ self)
+    predict : ∀ n→n'. πᵤ(n') ⊆ τᵤ(n)
+    within  : ∀ n. τᵤ(n) ⊆ allExprs
+  }
+}

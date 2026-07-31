@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 21 InterGatherSub — a gather whose sub-expression is a set INTERSECTION: `needs(z) ∩ base(z) ⊆ ig(n)`.
+-- Stresses the BOUNDARY of the gather-sub generalization: `∪`/`∖` lower to a `Leaf`, but `∩` is NOT
+-- `Leaf`-shaped, so the totality contract must reject it with a located error (not silently mislower).
+analysis InterGatherSubS {
+  history InterGatherSub ig : Nums[Nums] {
+    update : ∀ n→n'. ig(n) ⊆ ig(n')
+    always : ∀ n→n'. z ∈ ig(n')  when  needs(z) ∩ base(z) ⊆ ig(n)
+    seed   : ∅ ⊆ ig(entry)
+    within : ∀ n. ig(n) ⊆ allNums
+  }
+}

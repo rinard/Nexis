@@ -1,0 +1,22 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 07 EdgeStorm — an edge-gen ghost whose placement reads FIVE foreign ghosts at the edge:
+-- `superEarly(h1,p1,a2,b2,c2)(n,n')`. Stresses: fwdEdge param collection + grouping (five arity-1 Node→S
+-- params in one binder), the Wf hypothesis threading (five `h…` subset hyps), and a diffc carrier.
+analysis EdgeStorm {
+  history H1 h1 : Exprs[Expr] {
+    update : ∀ n→n'. h1(n') ⊆ genExprs(n) ∪ (h1(n) ∩ transpExprs(n))
+    seed   : h1(entry) ⊆ ∅
+    within : ∀ n. h1(n) ⊆ allExprs
+  }
+  prophecy P1 p1 : Exprs[Expr] {
+    predict : ∀ n→n'. p1(n) ∖ genExprs(n) ⊆ p1(n')
+    check   : ∀ n. p1(n) ⊆ genExprs(n) ∪ transpExprs(n)
+    seed    : p1(final) ⊆ ∅
+    within  : ∀ n. p1(n) ⊆ allExprs
+  }
+  history Edge edge : Exprs[Expr] {
+    update : ∀ n→n'. edge(n') ⊆ superEarly(h1,p1,a2,b2,c2)(n,n') ∪ (edge(n) ∖ killExprs(n))
+    seed   : edge(entry) ⊆ ∅
+    within : ∀ n. edge(n) ⊆ allExprs
+  }
+}

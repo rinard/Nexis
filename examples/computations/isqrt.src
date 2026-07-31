@@ -1,0 +1,10 @@
+// Copyright (c) 2026 Martin Rinard
+// Integer square root by Newton's method: root = floor(sqrt(n)).
+n := 1000000;
+x := n;
+y := (x + 1) / 2;
+while y < x {
+  x := y;
+  y := (x + n / x) / 2
+};
+root := x

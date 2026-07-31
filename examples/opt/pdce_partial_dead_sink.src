@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+x := a * b; if c { y := x } else { x := 0 }

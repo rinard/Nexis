@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- PartialAvail.gsl — GSL surface for partialavail (§3 grammar, explicit node form).  history · may ⇒ fwd·may.
+include Tac.Locals
+
+analysis PartialAvail {
+  history PartialAvail pavail : Exprs[Expr] {
+    update : ∀ n→n'. genExprs(n) ∪ (pavail(n) ∩ transpExprs(n)) ⊆ pavail(n')
+    seed   : ∅ ⊆ pavail(entry)
+    within : ∀ n. pavail(n) ⊆ allExprs
+  }
+}

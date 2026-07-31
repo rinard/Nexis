@@ -1,0 +1,337 @@
+### misc_control_flow
+source: n := 5; i := 0; sum := 0; while i < n { if i < 3 { sum := sum + i } else { sum := sum + 10 }; i := i + 1 }
+
+========== [1/3] IR — before optimization ==========
+entry = L14
+  L0: halt
+  L1: n := 5    → L2
+  L2: i := 0    → L3
+  L3: sum := 0    → L4
+  L4: t4 := i < n    → L5
+  L5: ifz t4    zero → L0   nonzero → L6
+  L6: t6 := i < 3    → L7
+  L7: ifz t6    zero → L9   nonzero → L8
+  L8: t15 := sum + i    → L11
+  L9: t16 := sum + 10    → L12
+  L10: t17 := i + 1    → L13
+  L11: sum := t15    → L10
+  L12: sum := t16    → L10
+  L13: i := t17    → L4
+> L14: noop    → L1
+
+obs = [n, i, sum]
+
+========== [2/3] IR — after optimization (LCM + PDCE + cleanup), fed to codegen ==========
+entry = L1
+  L0: halt
+> L1: i := 0    → L2
+  L2: sum := 0    → L3
+  L3: n := 5    → L4
+  L4: t4 := i < n    → L5
+  L5: ifz t4    zero → L0   nonzero → L6
+  L6: t6 := i < 3    → L7
+  L7: ifz t6    zero → L10   nonzero → L8
+  L8: t15 := sum + i    → L9
+  L9: sum := t15    → L12
+  L10: t16 := sum + 10    → L11
+  L11: sum := t16    → L12
+  L12: t17 := i + 1    → L13
+  L13: i := t17    → L4
+
+obs = [n, i, sum]
+
+========== [3/3] generated AArch64 assembly ==========
+.text
+.globl _main
+.p2align 2
+_main:
+  sub sp, sp, #80
+  stp x29, x30, [sp]
+  mov x29, sp
+  str xzr, [x29, #16]
+  str xzr, [x29, #24]
+  str xzr, [x29, #32]
+  str xzr, [x29, #40]
+  str xzr, [x29, #48]
+  str xzr, [x29, #56]
+  str xzr, [x29, #64]
+  str xzr, [x29, #72]
+  b L8
+L0:
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr0@PAGE
+  add x8, x8, ostr0@PAGEOFF
+  ldr x9, [x29, #32]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr1@PAGE
+  add x8, x8, ostr1@PAGEOFF
+  ldr x9, [x29, #16]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr2@PAGE
+  add x8, x8, ostr2@PAGEOFF
+  ldr x9, [x29, #24]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  mov w0, #0
+  ldp x29, x30, [sp]
+  add sp, sp, #80
+  ret
+L1:
+  bl _abort
+L2:
+  bl _abort
+L3:
+  bl _abort
+L4:
+  bl _abort
+L5:
+  bl _abort
+L6:
+  bl _abort
+L7:
+  bl _abort
+L8:
+  ldr x9, =0
+L9:
+  str x9, [x29, #16]
+L10:
+  b L16
+L11:
+  bl _abort
+L12:
+  bl _abort
+L13:
+  bl _abort
+L14:
+  bl _abort
+L15:
+  bl _abort
+L16:
+  ldr x9, =0
+L17:
+  str x9, [x29, #24]
+L18:
+  b L24
+L19:
+  bl _abort
+L20:
+  bl _abort
+L21:
+  bl _abort
+L22:
+  bl _abort
+L23:
+  bl _abort
+L24:
+  ldr x9, =5
+L25:
+  str x9, [x29, #32]
+L26:
+  b L32
+L27:
+  bl _abort
+L28:
+  bl _abort
+L29:
+  bl _abort
+L30:
+  bl _abort
+L31:
+  bl _abort
+L32:
+  ldr x9, [x29, #16]
+L33:
+  ldr x10, [x29, #32]
+L34:
+  cmp x9, x10
+L35:
+  cset x9, lt
+L36:
+  str x9, [x29, #40]
+L37:
+  b L40
+L38:
+  bl _abort
+L39:
+  bl _abort
+L40:
+  ldr x9, [x29, #40]
+L41:
+  cbz x9, L0
+L42:
+  b L48
+L43:
+  bl _abort
+L44:
+  bl _abort
+L45:
+  bl _abort
+L46:
+  bl _abort
+L47:
+  bl _abort
+L48:
+  ldr x9, [x29, #16]
+L49:
+  ldr x10, =3
+L50:
+  cmp x9, x10
+L51:
+  cset x9, lt
+L52:
+  str x9, [x29, #48]
+L53:
+  b L56
+L54:
+  bl _abort
+L55:
+  bl _abort
+L56:
+  ldr x9, [x29, #48]
+L57:
+  cbz x9, L80
+L58:
+  b L64
+L59:
+  bl _abort
+L60:
+  bl _abort
+L61:
+  bl _abort
+L62:
+  bl _abort
+L63:
+  bl _abort
+L64:
+  ldr x9, [x29, #24]
+L65:
+  ldr x10, [x29, #16]
+L66:
+  add x9, x9, x10
+L67:
+  str x9, [x29, #56]
+L68:
+  b L72
+L69:
+  bl _abort
+L70:
+  bl _abort
+L71:
+  bl _abort
+L72:
+  ldr x9, [x29, #56]
+L73:
+  str x9, [x29, #24]
+L74:
+  b L96
+L75:
+  bl _abort
+L76:
+  bl _abort
+L77:
+  bl _abort
+L78:
+  bl _abort
+L79:
+  bl _abort
+L80:
+  ldr x9, [x29, #24]
+L81:
+  ldr x10, =10
+L82:
+  add x9, x9, x10
+L83:
+  str x9, [x29, #64]
+L84:
+  b L88
+L85:
+  bl _abort
+L86:
+  bl _abort
+L87:
+  bl _abort
+L88:
+  ldr x9, [x29, #64]
+L89:
+  str x9, [x29, #24]
+L90:
+  b L96
+L91:
+  bl _abort
+L92:
+  bl _abort
+L93:
+  bl _abort
+L94:
+  bl _abort
+L95:
+  bl _abort
+L96:
+  ldr x9, [x29, #16]
+L97:
+  ldr x10, =1
+L98:
+  add x9, x9, x10
+L99:
+  str x9, [x29, #72]
+L100:
+  b L104
+L101:
+  bl _abort
+L102:
+  bl _abort
+L103:
+  bl _abort
+L104:
+  ldr x9, [x29, #72]
+L105:
+  str x9, [x29, #16]
+L106:
+  b L32
+L107:
+  bl _abort
+L108:
+  bl _abort
+L109:
+  bl _abort
+L110:
+  bl _abort
+L111:
+  bl _abort
+L112:
+  bl _abort
+L113:
+  bl _abort
+L114:
+  bl _abort
+L115:
+  bl _abort
+L116:
+  bl _abort
+L117:
+  bl _abort
+L118:
+  bl _abort
+L119:
+  bl _abort
+.section __TEXT,__cstring
+lfmt: .asciz "%s=%lld\n"
+ostr0: .asciz "n"
+ostr1: .asciz "i"
+ostr2: .asciz "sum"

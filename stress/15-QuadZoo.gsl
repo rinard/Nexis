@@ -1,0 +1,24 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 15 QuadZoo — ONE analysis spanning three quadrants over TWO element types (Exprs, Defs) — a fwd·must, a
+-- fwd·may, a bwd·must — plus a meet and a join transfer variable, cross-referencing each other. Stresses:
+-- per-ghost element-type derivation within one analysis, quadrant diversity in a single dep graph, mixed domains.
+analysis QuadZoo {
+  history FMust fm : Exprs[Expr] {
+    update : ∀ n→n'. fm(n') ⊆ genExprs(n) ∪ (fm(n) ∩ transpExprs(n))
+    seed   : fm(entry) ⊆ ∅
+    within : ∀ n. fm(n) ⊆ allExprs
+  }
+  history FMay fy : Defs[Node] {
+    update : ∀ n→n'. genDefs(n) ∪ (fy(n) ∩ transpDefs(n)) ⊆ fy(n')
+    seed   : ∅ ⊆ fy(entry)
+    within : ∀ n. fy(n) ⊆ allDefs
+  }
+  prophecy BMust bm : Exprs[Expr] {
+    predict : ∀ n→n'. bm(n) ∖ genExprs(n) ⊆ bm(n')
+    check   : ∀ n. bm(n) ⊆ genExprs(n) ∪ transpExprs(n)
+    seed    : bm(final) ⊆ ∅
+    within  : ∀ n. bm(n) ⊆ allExprs
+  }
+  prophecy Meet mt : Exprs[Expr] { predict : ∀ n→n'. mt(n) ⊆ fm(n')  within : ∀ n. mt(n) ⊆ allExprs }
+  prophecy Join jn : Exprs[Expr] { predict : ∀ n→n'. fm(n') ⊆ jn(n)  within : ∀ n. jn(n) ⊆ allExprs }
+}

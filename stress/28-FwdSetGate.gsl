@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 28 FwdSetGate — a FORWARD set-level gate: `sinks(n) ⊆ fg(n') when trig meets fg(n)` (the result is the
+-- clause's own `sinks`, not the universe). The forward counterpart of gatedlive's backward set-level gate
+-- — pins that `checkToAtom`'s set-level gate-result logic works forward too. Lowers fwd·may.
+analysis FwdSetGateS {
+  history FwdSetGate fg : Nums[Nums] {
+    update : ∀ n→n'. fg(n) ⊆ fg(n')
+    always : ∀ n→n'. sinks(n) ⊆ fg(n')  when  trig meets fg(n)
+    seed   : ∅ ⊆ fg(entry)
+    within : ∀ n. fg(n) ⊆ allNums
+  }
+}

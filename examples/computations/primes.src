@@ -1,0 +1,15 @@
+// Copyright (c) 2026 Martin Rinard
+// Count the primes in [2, n] by trial division (nested loops).
+n := 50;
+count := 0;
+k := 2;
+while k <= n {
+  prime := 1;
+  d := 2;
+  while d * d <= k {
+    if k % d == 0 { prime := 0 };
+    d := d + 1
+  };
+  if prime { count := count + 1 };
+  k := k + 1
+}

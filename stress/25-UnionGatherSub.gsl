@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 25 UnionGatherSub — a gather whose sub-expression is a set UNION: `needs(z) ∪ extra(z) ⊆ ug(n)`. The
+-- complement to GatherDiff (`∖`): a compound gather-sub built with `∪` lowers to a `Leaf.union` and
+-- classifies (fwd·may). Pins the gather-sub generalization.
+analysis UnionGatherSubS {
+  history UnionGatherSub ug : Nums[Nums] {
+    update : ∀ n→n'. ug(n) ⊆ ug(n')
+    always : ∀ n→n'. z ∈ ug(n')  when  needs(z) ∪ extra(z) ⊆ ug(n)
+    seed   : ∅ ⊆ ug(entry)
+    within : ∀ n. ug(n) ⊆ allNums
+  }
+}

@@ -1,0 +1,14 @@
+// Copyright (c) 2026 Martin Rinard
+// Sum of the proper divisors of n (aliquot sum): n = 28 is perfect, so the sum is 28.
+// Divisors of 28 below 28 are 1, 2, 4, 7, 14, which sum to 28.
+n := 28;
+sum := 0;
+d := 1;
+while d < n {
+  r := n % d;
+  if r == 0 {
+    sum := sum + d;
+  };
+  d := d + 1;
+};
+// sum = 28

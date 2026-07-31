@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 31 FwdFloor — a FORWARD (`history`) ghost with a lone unguarded FLOOR (`floorExprs ⊆ ff`). Routed to
+-- the doubly-clamped `resFmC` (fwd·may) with the ceiling defaulted to the universe. Pins the
+-- lone-forward-floor ⇒ res*C wiring (the dual of 30).
+analysis FwdFloorS {
+  history FwdFloor ff : Exprs[Expr] {
+    update : ∀ n→n'. ff(n) ⊆ ff(n')
+    check  : ∀ n. floorExprs(n) ⊆ ff(n)
+    seed   : ∅ ⊆ ff(entry)
+    within : ∀ n. ff(n) ⊆ allExprs
+  }
+}

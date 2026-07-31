@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 01 PrimeAdd — the inspiration. A pure carrier (`var`) enriched by a compound (gather ∧ gate)
+-- per-element guard. fwd·may. Exercises: gather + gate + ∧ + accumulate + per-element condition.
+analysis PrimeAddS {
+  history PrimeAdd g : Nums[Nums] {
+    update : ∀ n→n'. g(n) ⊆ g(n')
+    always : ∀ n→n'. z ∈ g(n')  when  below(z) ⊆ g(n) ∧ primes meets g(n)
+    seed   : ∅ ⊆ g(entry)
+    within : ∀ n. g(n) ⊆ allNums
+  }
+}

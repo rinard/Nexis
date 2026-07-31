@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 32 FwdGuardClamp — a FORWARD ghost mixing a `when`-guarded atom AND an unguarded clamp. The guarded
+-- path carries no clamp and a lone forward clamp is only wired when unguarded, so this combination must
+-- REJECT with a located error (never silently drop the clamp). Pins the remaining forward totality guard.
+analysis FwdGuardClampS {
+  history FwdGuardClamp fg : Nums[Nums] {
+    update : ∀ n→n'. fg(n') ⊆ fg(n)
+    always : ∀ n→n'. sinks(n) ⊆ fg(n')  when  trig meets fg(n)
+    check  : ∀ n. fg(n) ⊆ ceilNums(n)
+    within : ∀ n. fg(n) ⊆ allNums
+  }
+}

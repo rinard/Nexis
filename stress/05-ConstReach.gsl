@@ -1,0 +1,13 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 05 ConstReach — reaching constant-copies over a PRODUCT domain (Var×Lit). The copy-through transfer
+-- `v := u` is a relational image `∃ y ∈ cp(n). copyThru(n)(y,z)` (non-separable), riding on a gen/kill
+-- carrier. The `image`-atom demo behind docs/CONST-PROP-DEMO.md. Stresses: image over a product element
+-- type, a carrier that both gens (bornPairs) and kills (via transpPairs) alongside the image summand.
+analysis ConstReachS {
+  history ConstReach cp : Pairs[Pairs] {
+    update : ∀ n→n'. cp(n') ⊆ bornPairs(n) ∪ (cp(n) ∩ transpPairs(n))
+    always : ∀ n→n'. z ∈ cp(n')  when  ∃ y ∈ cp(n). copyThru(n)(y,z)
+    seed   : cp(entry) ⊆ ∅
+    within : ∀ n. cp(n) ⊆ allPairs
+  }
+}

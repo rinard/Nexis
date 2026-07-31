@@ -1,0 +1,19 @@
+-- Copyright (c) 2026 Martin Rinard
+-- DemoGate.gsl — GENERALITY DEMONSTRATOR (not a shipped analysis).
+-- A guarded backward-may ghost whose base carrier is a GENERAL monotone expression in the matched
+-- orientation `e(self') ⊆ self` — here `definedVars(n) ∪ (dg(n') ∩ condVars(n))` — rather than the
+-- meets-form `self ∪ kill` (⇒ `var ∖ kill`). Combined with a `gate` guard, this exercises the emitter's
+-- evs-form pass-through (`flowBwd` + `printEvs` rendering the gate defeq to `MTC.evs`) for a gated general
+-- carrier — the path that has no other corpus instance. Its only purpose is to keep the axiom-clean gate
+-- covering that generality, so future changes can't silently regress it. Node-locals from `Tac.Locals`.
+include Tac.Locals
+
+analysis DemoGate {
+  prophecy DemoGate dg : Vars[Var] {
+    predict : ∀ n→n'. definedVars(n) ∪ (dg(n') ∩ condVars(n)) ⊆ dg(n)          -- matched-orientation GENERAL carrier
+    check   : ∀ n→n'. rhsVars(n) ⊆ dg(n)  when  definedVars(n) meets dg(n')     -- gate guard (⇒ gate atom)
+    check   : ∀ n. condVars(n) ⊆ dg(n)                                          -- floor
+    seed    : ∅ ⊆ dg(final)
+    within  : ∀ n. dg(n) ⊆ allVars
+  }
+}

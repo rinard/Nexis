@@ -1,0 +1,22 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Taint.gsl — a forward-may def-use TAINT analysis (the `image` atom carrier).
+-- `taint(n')` accumulates the node's `source(n)` (original/input variables read at `n`, the untrusted
+-- seeds) plus the relational image of the incoming taint under the node's `flowsTo` relation: at an
+-- assignment `d := e`, every operand `y` of `e` flows to the defined variable `d` (OR-gather / ∃). So a
+-- variable is tainted iff it is (transitively) derived from an original input variable. Direction WRITTEN
+-- (history ⇒ forward); the quadrant (fwd·may) is INFERRED from `taint(n')` on the ⊆-right (accumulate).
+-- Defs in `TaintDefs`; `_sub` facts in `TaintDefsSub`.
+
+include Tac.Locals
+
+include analyses.taint.TaintDefs
+
+analysis Taint {
+
+  history Taint taint : Vars[Var] {                 -- history · may  ⇒  fwd·may
+    update : ∀ n→n'. taint(n) ∪ source(n) ⊆ taint(n')                   -- carry ∪ orig-var sources
+    always : ∀ n→n'. z ∈ taint(n')  when  ∃ y ∈ taint(n). flowsTo(n)(y,z)   -- IMAGE (def→use, ∃)
+    seed   : ∅ ⊆ taint(entry)
+    within : ∀ n. taint(n) ⊆ allVars
+  }
+}

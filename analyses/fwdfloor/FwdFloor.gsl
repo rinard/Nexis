@@ -1,0 +1,15 @@
+-- Copyright (c) 2026 Martin Rinard
+-- FwdFloor.gsl — LONE FORWARD FLOOR demonstrator (`resFmC` with a defaulted universe ceiling).
+-- A forward (`history`) ghost with a single unguarded floor `genExprs ⊆ ff`. No forward single-clamp
+-- solver exists, so lowering routes it to the doubly-clamped `resFmC` with the ceiling defaulted to the
+-- universe `allExprs`. The pure carrier `ff(n) ⊆ ff(n')` (output self `ff(n')` on the superset side ⇒ may).
+include Tac.Locals
+
+analysis FwdFloor {
+  history FwdFloor ff : Exprs[Expr] {
+    update : ∀ n→n'. ff(n) ⊆ ff(n')
+    check  : ∀ n. genExprs(n) ⊆ ff(n)
+    seed   : ∅ ⊆ ff(entry)
+    within : ∀ n. ff(n) ⊆ allExprs
+  }
+}

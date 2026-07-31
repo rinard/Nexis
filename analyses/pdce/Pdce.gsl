@@ -1,0 +1,41 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Pdce.gsl — the GSL surface for PDCE (frozen §3 grammar).  EXPLICIT node form:
+--   propagation + guarded conditions quantify  ∀ n→n' (per edge);  unguarded clamps quantify  ∀ n.
+-- This is the authored source.  PdceSolve.lean (F1 target) and PdceValidExtremal.lean (clause audit)
+-- are its derivations; defs (born/pass/definedVars/rhsVars/condVars/liveSeed) live in PdceDefs.lean.
+-- Direction is WRITTEN (history/prophecy); the quadrant (fwd·must / bwd·may) is INFERRED.
+
+include analyses.pdce.PdceDefs
+
+analysis PDCE {
+
+  prophecy Live π : Variables[Var] {             -- prophecy · may  ⇒  bwd·may
+    predict : ∀ n→n'. π(n') ⊆ π(n) ∪ defVars(n)                        -- propagation (kill def)
+    check   : ∀ n→n'. rhsVars(n) ⊆ π(n)  when  defVars(n) meets π(n')  -- GUARDED ⇒ gate (faint-aware)
+    check   : ∀ n. condVars(n) ⊆ π(n)                                     -- unguarded ⇒ floor (lo clamp)
+    seed    : liveSeed ⊆ π(final)
+    within  : ∀ n. π(n) ⊆ allVars
+  }
+
+  history Sink η : Assignments[Asgn] {            -- history · must  ⇒  fwd·must
+    update : ∀ n→n'. η(n') ⊆ born(n) ∪ (η(n) ∩ pass(n))
+    seed   : η(entry) ⊆ sinkSeed
+    within : ∀ n. η(n) ⊆ allAsgns
+  }
+}
+
+-- ── Alternate path: the same analysis in INFERRED form (nodes elided; recovered from clause shape) ──
+-- analysis PDCE {
+--   history  Sink sink : Assignments[Asgn] {
+--     update : sink' ⊆ born ∪ (sink ∩ pass)
+--     seed   : sink ⊆ ∅
+--     within allAsgns
+--   }
+--   prophecy Live live : Variables[Var] {
+--     predict : live' ⊆ live ∪ definedVars
+--     check   : rhsVars ⊆ live  when  definedVars meets live'
+--     check   : condVars ⊆ live
+--     seed    : liveSeed ⊆ live
+--     within allVars
+--   }
+-- }

@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- MaybeAssign.gsl — GSL surface for maybeassign (§3 grammar, explicit node form).  history · may ⇒ fwd·may.
+include Tac.Locals
+
+analysis MaybeAssign {
+  history MaybeAssign ma : Vars[Var] {
+    update : ∀ n→n'. genVars(n) ∪ (ma(n) ∩ transpGenVars(n)) ⊆ ma(n')
+    seed   : ∅ ⊆ ma(entry)
+    within : ∀ n. ma(n) ⊆ allGenVars
+  }
+}

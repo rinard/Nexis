@@ -1,0 +1,2 @@
+// Copyright (c) 2026 Martin Rinard
+a := 6; b := 3; c := 2; d := 1; r := a + b * c - d; s := r << 2; t := s >> 1; u := ~t & r

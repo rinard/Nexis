@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 30 FwdClamp — a FORWARD (`history`) ghost with a lone unguarded CEILING (`fc ⊆ ceilExprs`) over the
+-- diamond carrier. No forward single-clamp solver exists, so lowering routes it to the doubly-clamped
+-- `resFMC` (fwd·must) with the floor defaulted to `∅`. Pins the lone-forward-ceiling ⇒ res*C wiring.
+analysis FwdClampS {
+  history FwdClamp fc : Exprs[Expr] {
+    update : ∀ n→n'. fc(n') ⊆ genExprs(n) ∪ (fc(n) ∩ transpExprs(n))
+    check  : ∀ n. fc(n) ⊆ ceilExprs(n)
+    seed   : fc(entry) ⊆ ∅
+    within : ∀ n. fc(n) ⊆ allExprs
+  }
+}

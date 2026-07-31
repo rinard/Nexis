@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 14 TwoImages — TWO relational images OR'd, over two different relations read at the same edge:
+-- `(∃ y ∈ ti(n). fwd(n)(y,z)) ∨ (∃ w ∈ ti(n). bwd(n)(w,z))`. Stresses: multiple `∃`-image atoms in one
+-- guard, distinct ∃-bound variables (y, w), a union of two images.
+analysis TwoImagesS {
+  history TwoImages ti : Vals[Vals] {
+    update : ∀ n→n'. ti(n) ⊆ ti(n')
+    always : ∀ n→n'. z ∈ ti(n')  when  ∃ y ∈ ti(n). fwd(n)(y,z) ∨ ∃ w ∈ ti(n). bwd(n)(w,z)
+    seed   : ∅ ⊆ ti(entry)
+    within : ∀ n. ti(n) ⊆ allVals
+  }
+}

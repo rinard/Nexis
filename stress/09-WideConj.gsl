@@ -1,0 +1,12 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 09 WideConj — a PRECEDENCE torture: `a ∧ b ∨ c ∧ d ∧ e` with no parens, so the parser must bind it as
+-- `(gatherA ∧ gateA) ∨ (gatherB ∧ gateB ∧ gateC)` (∧ tighter than ∨, both left-assoc). Five atoms, one
+-- clause. Stresses: the Guard/GuardAnd/GuardAtom precedence layering and left-assoc grouping.
+analysis WideConjS {
+  history WideConj w : Nums[Nums] {
+    update : ∀ n→n'. w(n) ⊆ w(n')
+    always : ∀ n→n'. z ∈ w(n')  when  belowA(z) ⊆ w(n) ∧ pA meets w(n) ∨ belowB(z) ⊆ w(n) ∧ pB meets w(n) ∧ pC meets w(n)
+    seed   : ∅ ⊆ w(entry)
+    within : ∀ n. w(n) ⊆ allNums
+  }
+}

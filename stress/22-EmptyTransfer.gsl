@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 22 EmptyTransfer — a propagation whose RHS is the bare empty set: `et(n') ⊆ ∅`. `∅` is representable
+-- only as a seed/boundary, never as a standalone MTC transfer term, so the totality contract must reject
+-- it with a located error.
+analysis EmptyTransferS {
+  history EmptyTransfer et : Nums[Nums] {
+    update : ∀ n→n'. et(n') ⊆ ∅
+    seed   : ∅ ⊆ et(entry)
+    within : ∀ n. et(n) ⊆ allNums
+  }
+}

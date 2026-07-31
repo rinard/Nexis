@@ -1,0 +1,11 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Available.gsl — GSL surface for available (§3 grammar, explicit node form).  history · must ⇒ fwd·must.
+include Tac.Locals
+
+analysis Available {
+  history Available avail : Exprs[Expr] {
+    update : ∀ n→n'. avail(n') ⊆ genExprs(n) ∪ (avail(n) ∩ transpExprs(n))
+    seed   : avail(entry) ⊆ ∅
+    within : ∀ n. avail(n) ⊆ allExprs
+  }
+}
