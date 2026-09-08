@@ -2,13 +2,14 @@
 source: x := a * b; if c { y := x } else { x := 0 }
 
 ========== [1/3] IR — before optimization ==========
-entry = L5
+entry = L6
   L0: halt
   L1: x := a * b    → L2
   L2: ifz c    zero → L4   nonzero → L3
   L3: y := x    → L0
   L4: x := 0    → L0
-> L5: noop    → L1
+  L5: noop    → L1
+> L6: noop    → L5
 
 obs = [x, a, b, c, y]
 

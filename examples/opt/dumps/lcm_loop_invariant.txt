@@ -2,31 +2,32 @@
 source: a := 5; b := 3; i := 0; while i < 10 { t := a + b; i := i + t }
 
 ========== [1/3] IR — before optimization ==========
-entry = L9
+entry = L10
   L0: halt
   L1: a := 5    → L2
   L2: b := 3    → L3
   L3: i := 0    → L4
   L4: t4 := i < 10    → L5
   L5: ifz t4    zero → L0   nonzero → L6
-  L6: t := a + b    → L7
-  L7: t12 := i + t    → L8
+  L6: t := 8    → L7
+  L7: t12 := i + 8    → L8
   L8: i := t12    → L4
-> L9: noop    → L1
+  L9: noop    → L1
+> L10: noop    → L9
 
 obs = [a, b, i, t]
 
 ========== [2/3] IR — after optimization (LCM + PDCE + cleanup), fed to codegen ==========
-entry = L1
-  L0: halt
-> L1: i := 0    → L2
-  L2: b := 3    → L3
-  L3: a := 5    → L4
+entry = L3
+  L0: b := 3    → L1
+  L1: a := 5    → L2
+  L2: halt
+> L3: i := 0    → L4
   L4: t4 := i < 10    → L5
   L5: ifz t4    zero → L0   nonzero → L6
-  L6: t := a + b    → L7
-  L7: t12 := i + t    → L8
-  L8: i := t12    → L4
+  L6: t12 := i + 8    → L7
+  L7: i := t12    → L8
+  L8: t := 8    → L4
 
 obs = [a, b, i, t]
 
@@ -44,56 +45,13 @@ _main:
   str xzr, [x29, #40]
   str xzr, [x29, #48]
   str xzr, [x29, #56]
-  b L8
+  b L24
 L0:
-  adrp x0, lfmt@PAGE
-  add x0, x0, lfmt@PAGEOFF
-  adrp x8, ostr0@PAGE
-  add x8, x8, ostr0@PAGEOFF
-  ldr x9, [x29, #32]
-  sub sp, sp, #16
-  str x8, [sp]
-  str x9, [sp, #8]
-  bl _printf
-  add sp, sp, #16
-  adrp x0, lfmt@PAGE
-  add x0, x0, lfmt@PAGEOFF
-  adrp x8, ostr1@PAGE
-  add x8, x8, ostr1@PAGEOFF
-  ldr x9, [x29, #24]
-  sub sp, sp, #16
-  str x8, [sp]
-  str x9, [sp, #8]
-  bl _printf
-  add sp, sp, #16
-  adrp x0, lfmt@PAGE
-  add x0, x0, lfmt@PAGEOFF
-  adrp x8, ostr2@PAGE
-  add x8, x8, ostr2@PAGEOFF
-  ldr x9, [x29, #16]
-  sub sp, sp, #16
-  str x8, [sp]
-  str x9, [sp, #8]
-  bl _printf
-  add sp, sp, #16
-  adrp x0, lfmt@PAGE
-  add x0, x0, lfmt@PAGEOFF
-  adrp x8, ostr3@PAGE
-  add x8, x8, ostr3@PAGEOFF
-  ldr x9, [x29, #48]
-  sub sp, sp, #16
-  str x8, [sp]
-  str x9, [sp, #8]
-  bl _printf
-  add sp, sp, #16
-  mov w0, #0
-  ldp x29, x30, [sp]
-  add sp, sp, #64
-  ret
+  ldr x9, =3
 L1:
-  bl _abort
+  str x9, [x29, #16]
 L2:
-  bl _abort
+  b L8
 L3:
   bl _abort
 L4:
@@ -105,9 +63,9 @@ L6:
 L7:
   bl _abort
 L8:
-  ldr x9, =0
+  ldr x9, =5
 L9:
-  str x9, [x29, #16]
+  str x9, [x29, #24]
 L10:
   b L16
 L11:
@@ -121,11 +79,54 @@ L14:
 L15:
   bl _abort
 L16:
-  ldr x9, =3
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr0@PAGE
+  add x8, x8, ostr0@PAGEOFF
+  ldr x9, [x29, #24]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr1@PAGE
+  add x8, x8, ostr1@PAGEOFF
+  ldr x9, [x29, #16]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr2@PAGE
+  add x8, x8, ostr2@PAGEOFF
+  ldr x9, [x29, #32]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  adrp x0, lfmt@PAGE
+  add x0, x0, lfmt@PAGEOFF
+  adrp x8, ostr3@PAGE
+  add x8, x8, ostr3@PAGEOFF
+  ldr x9, [x29, #56]
+  sub sp, sp, #16
+  str x8, [sp]
+  str x9, [sp, #8]
+  bl _printf
+  add sp, sp, #16
+  mov w0, #0
+  ldp x29, x30, [sp]
+  add sp, sp, #64
+  ret
 L17:
-  str x9, [x29, #24]
+  bl _abort
 L18:
-  b L24
+  bl _abort
 L19:
   bl _abort
 L20:
@@ -137,7 +138,7 @@ L22:
 L23:
   bl _abort
 L24:
-  ldr x9, =5
+  ldr x9, =0
 L25:
   str x9, [x29, #32]
 L26:
@@ -153,7 +154,7 @@ L30:
 L31:
   bl _abort
 L32:
-  ldr x9, [x29, #16]
+  ldr x9, [x29, #32]
 L33:
   ldr x10, =10
 L34:
@@ -187,7 +188,7 @@ L47:
 L48:
   ldr x9, [x29, #32]
 L49:
-  ldr x10, [x29, #24]
+  ldr x10, =8
 L50:
   add x9, x9, x10
 L51:
@@ -201,15 +202,15 @@ L54:
 L55:
   bl _abort
 L56:
-  ldr x9, [x29, #16]
+  ldr x9, [x29, #48]
 L57:
-  ldr x10, [x29, #48]
+  str x9, [x29, #32]
 L58:
-  add x9, x9, x10
-L59:
-  str x9, [x29, #56]
-L60:
   b L64
+L59:
+  bl _abort
+L60:
+  bl _abort
 L61:
   bl _abort
 L62:
@@ -217,9 +218,9 @@ L62:
 L63:
   bl _abort
 L64:
-  ldr x9, [x29, #56]
+  ldr x9, =8
 L65:
-  str x9, [x29, #16]
+  str x9, [x29, #56]
 L66:
   b L32
 L67:

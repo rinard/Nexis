@@ -2,28 +2,27 @@
 source: a := 4; b := 3; c := 2; x := a + b; y := a + b + c
 
 ========== [1/3] IR — before optimization ==========
-entry = L7
+entry = L8
   L0: halt
   L1: a := 4    → L2
   L2: b := 3    → L3
   L3: c := 2    → L4
-  L4: x := a + b    → L5
-  L5: t5 := a + b    → L6
-  L6: y := t5 + c    → L0
-> L7: noop    → L1
+  L4: x := 7    → L5
+  L5: t5 := 7    → L6
+  L6: y := 9    → L0
+  L7: noop    → L1
+> L8: noop    → L7
 
 obs = [a, b, c, x, y]
 
 ========== [2/3] IR — after optimization (LCM + PDCE + cleanup), fed to codegen ==========
-entry = L3
-  L0: y := t5 + c    → L1
-  L1: x := t7    → L2
-  L2: halt
-> L3: a := 4    → L4
-  L4: b := 3    → L5
-  L5: t7 := a + b    → L6
-  L6: t5 := t7    → L7
-  L7: c := 2    → L0
+entry = L0
+> L0: y := 9    → L1
+  L1: a := 4    → L2
+  L2: b := 3    → L3
+  L3: x := 7    → L4
+  L4: c := 2    → L5
+  L5: halt
 
 obs = [a, b, c, x, y]
 
@@ -32,7 +31,7 @@ obs = [a, b, c, x, y]
 .globl _main
 .p2align 2
 _main:
-  sub sp, sp, #80
+  sub sp, sp, #64
   stp x29, x30, [sp]
   mov x29, sp
   str xzr, [x29, #16]
@@ -40,19 +39,17 @@ _main:
   str xzr, [x29, #32]
   str xzr, [x29, #40]
   str xzr, [x29, #48]
-  str xzr, [x29, #56]
-  str xzr, [x29, #64]
-  b L24
+  b L0
 L0:
-  ldr x9, [x29, #24]
+  ldr x9, =9
 L1:
-  ldr x10, [x29, #32]
-L2:
-  add x9, x9, x10
-L3:
   str x9, [x29, #16]
-L4:
+L2:
   b L8
+L3:
+  bl _abort
+L4:
+  bl _abort
 L5:
   bl _abort
 L6:
@@ -60,9 +57,9 @@ L6:
 L7:
   bl _abort
 L8:
-  ldr x9, [x29, #48]
+  ldr x9, =4
 L9:
-  str x9, [x29, #40]
+  str x9, [x29, #24]
 L10:
   b L16
 L11:
@@ -76,11 +73,59 @@ L14:
 L15:
   bl _abort
 L16:
+  ldr x9, =3
+L17:
+  str x9, [x29, #32]
+L18:
+  b L24
+L19:
+  bl _abort
+L20:
+  bl _abort
+L21:
+  bl _abort
+L22:
+  bl _abort
+L23:
+  bl _abort
+L24:
+  ldr x9, =7
+L25:
+  str x9, [x29, #40]
+L26:
+  b L32
+L27:
+  bl _abort
+L28:
+  bl _abort
+L29:
+  bl _abort
+L30:
+  bl _abort
+L31:
+  bl _abort
+L32:
+  ldr x9, =2
+L33:
+  str x9, [x29, #48]
+L34:
+  b L40
+L35:
+  bl _abort
+L36:
+  bl _abort
+L37:
+  bl _abort
+L38:
+  bl _abort
+L39:
+  bl _abort
+L40:
   adrp x0, lfmt@PAGE
   add x0, x0, lfmt@PAGEOFF
   adrp x8, ostr0@PAGE
   add x8, x8, ostr0@PAGEOFF
-  ldr x9, [x29, #56]
+  ldr x9, [x29, #24]
   sub sp, sp, #16
   str x8, [sp]
   str x9, [sp, #8]
@@ -90,7 +135,7 @@ L16:
   add x0, x0, lfmt@PAGEOFF
   adrp x8, ostr1@PAGE
   add x8, x8, ostr1@PAGEOFF
-  ldr x9, [x29, #64]
+  ldr x9, [x29, #32]
   sub sp, sp, #16
   str x8, [sp]
   str x9, [sp, #8]
@@ -100,7 +145,7 @@ L16:
   add x0, x0, lfmt@PAGEOFF
   adrp x8, ostr2@PAGE
   add x8, x8, ostr2@PAGEOFF
-  ldr x9, [x29, #32]
+  ldr x9, [x29, #48]
   sub sp, sp, #16
   str x8, [sp]
   str x9, [sp, #8]
@@ -128,64 +173,16 @@ L16:
   add sp, sp, #16
   mov w0, #0
   ldp x29, x30, [sp]
-  add sp, sp, #80
+  add sp, sp, #64
   ret
-L17:
-  bl _abort
-L18:
-  bl _abort
-L19:
-  bl _abort
-L20:
-  bl _abort
-L21:
-  bl _abort
-L22:
-  bl _abort
-L23:
-  bl _abort
-L24:
-  ldr x9, =4
-L25:
-  str x9, [x29, #56]
-L26:
-  b L32
-L27:
-  bl _abort
-L28:
-  bl _abort
-L29:
-  bl _abort
-L30:
-  bl _abort
-L31:
-  bl _abort
-L32:
-  ldr x9, =3
-L33:
-  str x9, [x29, #64]
-L34:
-  b L40
-L35:
-  bl _abort
-L36:
-  bl _abort
-L37:
-  bl _abort
-L38:
-  bl _abort
-L39:
-  bl _abort
-L40:
-  ldr x9, [x29, #56]
 L41:
-  ldr x10, [x29, #64]
+  bl _abort
 L42:
-  add x9, x9, x10
+  bl _abort
 L43:
-  str x9, [x29, #48]
+  bl _abort
 L44:
-  b L48
+  bl _abort
 L45:
   bl _abort
 L46:
@@ -193,11 +190,11 @@ L46:
 L47:
   bl _abort
 L48:
-  ldr x9, [x29, #48]
+  bl _abort
 L49:
-  str x9, [x29, #24]
+  bl _abort
 L50:
-  b L56
+  bl _abort
 L51:
   bl _abort
 L52:
@@ -207,38 +204,6 @@ L53:
 L54:
   bl _abort
 L55:
-  bl _abort
-L56:
-  ldr x9, =2
-L57:
-  str x9, [x29, #32]
-L58:
-  b L0
-L59:
-  bl _abort
-L60:
-  bl _abort
-L61:
-  bl _abort
-L62:
-  bl _abort
-L63:
-  bl _abort
-L64:
-  bl _abort
-L65:
-  bl _abort
-L66:
-  bl _abort
-L67:
-  bl _abort
-L68:
-  bl _abort
-L69:
-  bl _abort
-L70:
-  bl _abort
-L71:
   bl _abort
 .section __TEXT,__cstring
 lfmt: .asciz "%s=%lld\n"

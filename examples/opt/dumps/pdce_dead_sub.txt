@@ -2,20 +2,21 @@
 source: d := a - b; d := 9; e := d
 
 ========== [1/3] IR — before optimization ==========
-entry = L4
+entry = L5
   L0: halt
   L1: d := a - b    → L2
   L2: d := 9    → L3
-  L3: e := d    → L0
-> L4: noop    → L1
+  L3: e := 9    → L0
+  L4: noop    → L1
+> L5: noop    → L4
 
 obs = [d, a, b, e]
 
 ========== [2/3] IR — after optimization (LCM + PDCE + cleanup), fed to codegen ==========
-entry = L2
-  L0: e := d    → L1
-  L1: halt
-> L2: d := 9    → L0
+entry = L0
+> L0: d := 9    → L1
+  L1: e := 9    → L2
+  L2: halt
 
 obs = [d, a, b, e]
 
@@ -31,9 +32,9 @@ _main:
   str xzr, [x29, #24]
   str xzr, [x29, #32]
   str xzr, [x29, #40]
-  b L16
+  b L0
 L0:
-  ldr x9, [x29, #24]
+  ldr x9, =9
 L1:
   str x9, [x29, #16]
 L2:
@@ -49,11 +50,27 @@ L6:
 L7:
   bl _abort
 L8:
+  ldr x9, =9
+L9:
+  str x9, [x29, #24]
+L10:
+  b L16
+L11:
+  bl _abort
+L12:
+  bl _abort
+L13:
+  bl _abort
+L14:
+  bl _abort
+L15:
+  bl _abort
+L16:
   adrp x0, lfmt@PAGE
   add x0, x0, lfmt@PAGEOFF
   adrp x8, ostr0@PAGE
   add x8, x8, ostr0@PAGEOFF
-  ldr x9, [x29, #24]
+  ldr x9, [x29, #16]
   sub sp, sp, #16
   str x8, [sp]
   str x9, [sp, #8]
@@ -83,7 +100,7 @@ L8:
   add x0, x0, lfmt@PAGEOFF
   adrp x8, ostr3@PAGE
   add x8, x8, ostr3@PAGEOFF
-  ldr x9, [x29, #16]
+  ldr x9, [x29, #24]
   sub sp, sp, #16
   str x8, [sp]
   str x9, [sp, #8]
@@ -93,26 +110,10 @@ L8:
   ldp x29, x30, [sp]
   add sp, sp, #48
   ret
-L9:
-  bl _abort
-L10:
-  bl _abort
-L11:
-  bl _abort
-L12:
-  bl _abort
-L13:
-  bl _abort
-L14:
-  bl _abort
-L15:
-  bl _abort
-L16:
-  ldr x9, =9
 L17:
-  str x9, [x29, #24]
+  bl _abort
 L18:
-  b L0
+  bl _abort
 L19:
   bl _abort
 L20:

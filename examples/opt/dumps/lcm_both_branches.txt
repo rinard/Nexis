@@ -2,13 +2,14 @@
 source: if c { y := a + b } else { z := a + b }; w := a + b
 
 ========== [1/3] IR — before optimization ==========
-entry = L5
+entry = L6
   L0: halt
   L1: ifz c    zero → L3   nonzero → L2
   L2: y := a + b    → L4
   L3: z := a + b    → L4
   L4: w := a + b    → L0
-> L5: noop    → L1
+  L5: noop    → L1
+> L6: noop    → L5
 
 obs = [c, y, a, b, z, w]
 

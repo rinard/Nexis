@@ -19,7 +19,8 @@ for f in examples/opt/*.src; do
   asm=$("$BIN" "$f" 2>/dev/null)
   {
     echo "### $base"
-    echo "source: $(cat "$f")"
+    # strip `//` comment lines so the header does not leak into the one-line source echo
+    echo "source: $(grep -v '^[[:space:]]*//' "$f")"
     echo
     echo "========== [1/3] IR — before optimization =========="
     printf '%s\n\n' "$before"

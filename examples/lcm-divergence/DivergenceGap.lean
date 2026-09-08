@@ -55,9 +55,9 @@ optimized program evaluates it at the hoisted point and divides by zero.
 lake env lean examples/lcm-divergence/DivergenceGap.lean
 ```
 
-**Axioms.** This exhibit uses `native_decide` for one purely computational fact (`wellFormedb Pgap`), which
-adds `ofReduceBool`. It is deliberately **not** part of the `BaseLanguage` library and not in
-`defaultTargets`; every theorem in the library proper remains axiom-clean.
+**Axioms.** Axiom-clean — `propext` / `Classical.choice` / `Quot.sound` only, the same three the library
+proper uses. No `native_decide`, hence no `ofReduceBool`. The file is still kept out of `BaseLanguage`
+and out of `defaultTargets`, since it is an exhibit rather than part of the development.
 -/
 
 open BaseLanguage BaseLanguage.Tac BaseLanguage.Semantics BaseLanguage.Analyses.LCM
@@ -78,7 +78,77 @@ def Pgap : Program :=
                 Cmd.assign vy E 7, Cmd.assign vx E 3, Cmd.noop 6, Cmd.halt ]
   , obs := [vx, vy] }
 
-theorem Pgap_wf : WellFormed Pgap := wellFormedb_iff.mp (by native_decide)
+/-- Well-formedness, proved by hand rather than by `native_decide`: the array literal's `fetch` and
+    `size` both reduce by `rfl`, so the eight in-range cases and the out-of-range case close directly.
+    This keeps the whole exhibit free of `ofReduceBool`. -/
+theorem Pgap_wf : WellFormed Pgap where
+  entry_lt := by decide
+  succ_lt := by
+    intro n instr s hf hs
+    show s < 8
+    match n with
+    | 0 =>
+        rw [show Pgap.fetch 0 = some (Cmd.noop 1) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 1 =>
+        rw [show Pgap.fetch 1 = some (Cmd.ifz vc 2 5) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 2 =>
+        rw [show Pgap.fetch 2 = some (Cmd.noop 3) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 3 =>
+        rw [show Pgap.fetch 3 = some (Cmd.ifz vd 4 6) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 4 =>
+        rw [show Pgap.fetch 4 = some (Cmd.assign vy E 7) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 5 =>
+        rw [show Pgap.fetch 5 = some (Cmd.assign vx E 3) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 6 =>
+        rw [show Pgap.fetch 6 = some (Cmd.noop 6) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | 7 =>
+        rw [show Pgap.fetch 7 = some (Cmd.halt) from rfl] at hf
+        injection hf with h; subst h
+        simp only [Cmd.succs, List.mem_cons, List.not_mem_nil, or_false] at hs <;>
+          first
+            | (subst hs; decide)
+            | (rcases hs with rfl | rfl <;> decide)
+    | (k+8) =>
+        exfalso
+        have hnone : Pgap.fetch (k+8) = none := by
+          simp only [Pgap, Program.fetch]
+          exact Array.getElem?_eq_none (by simp)
+        rw [hnone] at hf; simp at hf
 
 /-- Every node is forward-reachable from the entry — so the program is not degenerate, and
     `normalize_wellNormalized` applies to it. -/
@@ -92,7 +162,7 @@ theorem Pgap_reach : AllReachable Pgap := by
   have h6 : FReach Pgap 6 := FReach.step h3 (by decide)
   have h7 : FReach Pgap 7 := FReach.step h4 (by decide)
   intro nd h
-  have hs : Pgap.size = 8 := by native_decide
+  have hs : Pgap.size = 8 := rfl
   rw [hs] at h
   match nd, h with
   | 0, _ => exact h0

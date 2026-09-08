@@ -2,7 +2,7 @@
 source: s := 0; i := 0; while i < 5 { x := a + b; y := a + b; s := s + x; i := i + 1 }
 
 ========== [1/3] IR — before optimization ==========
-entry = L11
+entry = L12
   L0: halt
   L1: s := 0    → L2
   L2: i := 0    → L3
@@ -14,7 +14,8 @@ entry = L11
   L8: t12 := i + 1    → L10
   L9: s := t11    → L8
   L10: i := t12    → L3
-> L11: noop    → L1
+  L11: noop    → L1
+> L12: noop    → L11
 
 obs = [s, i, x, a, b, y]
 
