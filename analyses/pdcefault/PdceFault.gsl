@@ -1,0 +1,41 @@
+-- Copyright (c) 2026 Martin Rinard
+-- PdceFault.gsl — the fault-preserving PDCE analysis.
+--
+-- This is `Pdce.gsl` with EXACTLY ONE extra clause: an unguarded floor putting the operands of a
+-- possibly-faulting assignment into `π`. Everything else — both ghosts, every other clause, the node-
+-- locals — is character-for-character the classical analysis.
+--
+-- Why the extra clause is needed. PDCE's liveness is FAINT: the guarded `check` makes a node's operands
+-- live only `when defVars(n) meets π(n')`, i.e. only when the result is live downstream. That is exactly
+-- what lets PDCE delete a dead computation — and it is also what makes it drop a *faulting* dead
+-- computation, turning a faulting run into a halting one. A computation that can fault is observable, so
+-- the fault-preserving mode must treat its operands as live unconditionally.
+--
+-- Note the SHAPE: the classical analysis's floor `condVars(n) ⊆ π(n)` is simply WIDENED to
+-- `condVars(n) ∪ faultingRhsVars(n) ⊆ π(n)`. Same `Clamp` production, same polarity, same quadrant — the
+-- generator permits exactly one floor per ghost, so widening it is both the only way and the honest one.
+-- The condition ("this node can fault") lives in the node-local `faultingRhsVars`, authored in
+-- `PdceDefs.lean` beside `condVars`; no guard form and no grammar extension is involved.
+--
+-- The cost is real and is confined to `π`: it is a LOWER bound on a LEAST fixpoint, so the solution grows
+-- and fewer computations are eliminated. That is why this is a separate analysis rather than a filter on
+-- the classical bundle — the classical mode keeps faint liveness and its full optimization power.
+
+include analyses.pdcefault.PdceFaultDefs
+
+analysis PDCEFault {
+
+  prophecy Live π : Variables[Var] {             -- prophecy · may  ⇒  bwd·may
+    predict : ∀ n→n'. π(n') ⊆ π(n) ∪ defVars(n)                        -- propagation (kill def)
+    check   : ∀ n→n'. rhsVars(n) ⊆ π(n)  when  defVars(n) meets π(n')  -- GUARDED ⇒ gate (faint-aware)
+    check   : ∀ n. liveFloorF(n) ⊆ π(n)                                    -- floor (lo clamp), WIDENED
+    seed    : liveSeed ⊆ π(final)
+    within  : ∀ n. π(n) ⊆ allVars
+  }
+
+  history Sink η : Assignments[Asgn] {            -- history · must  ⇒  fwd·must
+    update : ∀ n→n'. η(n') ⊆ born(n) ∪ (η(n) ∩ pass(n))
+    seed   : η(entry) ⊆ sinkSeed
+    within : ∀ n. η(n) ⊆ allAsgns
+  }
+}

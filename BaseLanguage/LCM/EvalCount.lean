@@ -971,7 +971,7 @@ theorem transform_evalCount {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn 
   have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
     intro e' he'
     rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he'
-    exact absurd he'.1.1 (used_entry_empty S hS wn hen e')
+    exact absurd (πᵤK_sub S _ e' he'.1.1) (used_entry_empty S hS wn hen e')
   exact evalCount_fold S hS wn e (steps_toH hrun) hfin (match_init S σ) (postpSubAnti_entry S) hcov
 
 end BaseLanguage.Analyses.LCM

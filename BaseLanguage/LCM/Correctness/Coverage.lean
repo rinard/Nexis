@@ -227,8 +227,10 @@ theorem used_diff_avail_sub_anti {P : Program} (S : LcmSpec P) (hS : Extremal S)
 theorem killed_in_insertAfter {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
     {c c' : Config}
     (hstep : Step P c c') {e : Expr}
-    (hused : e ∈ S.πᵤ c'.node) (hkill : e ∉ pass P c.node)
+    (hused : e ∈ S.πᵤK c'.node) (hkill : e ∉ pass P c.node)
     (hnlat : e ∉ latestNode P S.ηₚ S.τₚ c'.node) : e ∈ insertAfter P S c.node := by
+  have hkeep : S.keep e = true := (mem_πᵤK.mp hused).2
+  have hused : e ∈ S.πᵤ c'.node := πᵤK_sub S _ e hused
   have heall : e ∈ allExprs P := S.isUsed.within c'.node e hused
   have hpostp : e ∉ S.ηₚ c'.node := by
     intro hp
@@ -259,7 +261,7 @@ theorem killed_in_insertAfter {P : Program} (S : LcmSpec P) (hS : Extremal S) (w
   | @assign nd σ x e0 next v hf hv =>
       unfold insertAfter
       rw [hf, Assignments.mem_inter]
-      refine ⟨?_, husedout⟩
+      refine ⟨?_, mem_τᵤK.mpr ⟨husedout, hkeep⟩⟩
       unfold latestEdge; rw [Assignments.mem_sdiff]
       exact ⟨Assignments.mem_union.mpr (Or.inl hearl), hpostp⟩
   | ifzT hf _ => exact absurd (Assignments.mem_filter'.mpr ⟨heall, by simp [transpB, hf, instrDefVar]⟩) hkill
@@ -305,22 +307,25 @@ theorem used_inter_latestNode_sub_usedOut {P : Program} (S : LcmSpec P) (hS : Ex
 
 /-- A demanded exit/edge point (`∈ latestOut ∩ usedOut`) is in `insertOut` — definitional. -/
 theorem latestOut_usedOut_sub_insertOut {P : Program} {S : LcmSpec P} {n : Node} {e : Expr}
-    (hlo : e ∈ latestOut P S n) (huo : e ∈ S.τᵤ n) : e ∈ insertOut P S n :=
+    (hlo : e ∈ latestOut P S n) (huo : e ∈ S.τᵤK n) : e ∈ insertOut P S n :=
   Assignments.mem_inter.mpr ⟨hlo, huo⟩
 
 /-- **Isolation corollary (the `Cov_step` lever):** a demanded `e ∉ insertBefore(n) ∧ ∉ insertOut(n)`
     is not `latestNode(n)` — via the partition `latestNode ⊆ latestIn ∪ latestOut` and `πᵤ ∩ latestNode ⊆ τᵤ`.
     `insertOut = latestOut ∩ τᵤ` unifies the node-exit (`assign`/`noop`) and edge (`ifz`) placement. -/
 theorem used_notInsertAt_notLatest {P : Program} (S : LcmSpec P) (hS : Extremal S) {n : Node} {e : Expr}
-    (hu : e ∈ S.πᵤ n) (hni : e ∉ insertBefore P S n) (hnio : e ∉ insertOut P S n) :
+    (hu : e ∈ S.πᵤK n) (hni : e ∉ insertBefore P S n) (hnio : e ∉ insertOut P S n) :
     e ∉ latestNode P S.ηₚ S.τₚ n := by
   intro hl
-  have hout : e ∈ S.τᵤ n := used_inter_latestNode_sub_usedOut S hS n e (Assignments.mem_inter.mpr ⟨hu, hl⟩)
+  have hkeep : S.keep e = true := (mem_πᵤK.mp hu).2
+  have hout : e ∈ S.τᵤ n :=
+    used_inter_latestNode_sub_usedOut S hS n e (Assignments.mem_inter.mpr ⟨πᵤK_sub S n e hu, hl⟩)
+  have houtK : e ∈ S.τᵤK n := mem_τᵤK.mpr ⟨hout, hkeep⟩
   by_cases hlo : e ∈ latestOut P S n
-  · exact hnio (latestOut_usedOut_sub_insertOut hlo hout)
+  · exact hnio (latestOut_usedOut_sub_insertOut hlo houtK)
   · refine hni ?_
     unfold insertBefore; rw [Assignments.mem_inter]
-    exact ⟨Assignments.mem_sdiff.mpr ⟨hl, hlo⟩, hout⟩
+    exact ⟨Assignments.mem_sdiff.mpr ⟨hl, hlo⟩, houtK⟩
 
 /-! ## `latestEdge ⊆ insertEdge` — the transparent `Cov_step` case
 
@@ -393,7 +398,7 @@ theorem earliest_sub_postp {P : Program} (S : LcmSpec P) (hS : Extremal S) {ci c
     membership in `insertEdge i j` — no `hstep` needed. The `ifz` edge insert is realized on the branch edge
     chain, so it is simply `insertEdge`; no critical-edge splitting. -/
 theorem edgeIns_sub_insertEdge {P : Program} (S : LcmSpec P) {i j : Node} {e : Expr}
-    (hedge : e ∈ latestEdge P S.πₐ S.ηₐ S.ηₚ i j) (husedout : e ∈ S.τᵤ i) :
+    (hedge : e ∈ latestEdge P S.πₐ S.ηₐ S.ηₚ i j) (husedout : e ∈ S.τᵤK i) :
     e ∈ insertEdge P S i j := Assignments.mem_inter.mpr ⟨hedge, husedout⟩
 
 /-- `insertAfter = insertEdge(i,next)` at a `1-successor` source (both `= latestEdge(i,next) ∩ usedOut i`). -/
@@ -440,7 +445,7 @@ transparent-`latestEdge` case). No `μ`-ghost — pure set bookkeeping. -/
 theorem latestOut_used_succ_sub_insertEdge {P : Program} (S : LcmSpec P) (hS : Extremal S)
     {c c' : Config} (hstep : Step P c c') {e : Expr}
     (hu : e ∈ S.πᵤ c'.node) (hnlat : e ∉ latestNode P S.ηₚ S.τₚ c'.node)
-    (hlo : e ∈ latestOut P S c.node) (huo : e ∈ S.τᵤ c.node) :
+    (hlo : e ∈ latestOut P S c.node) (huo : e ∈ S.τᵤK c.node) :
     e ∈ insertEdge P S c.node c'.node := by
   have heall : e ∈ allExprs P := S.isUsed.within c'.node e hu
   have hnpc' : e ∉ S.ηₚ c'.node := by
@@ -483,7 +488,7 @@ theorem latestOut_used_succ_sub_insertEdge {P : Program} (S : LcmSpec P) (hS : E
 /-- Coverage invariant: demanded-and-not-placed temps are in `M`. `insertOut = latestOut ∩ usedOut` unifies
     node-exit (`assign`/`noop`) and edge (`ifz`) placement leaving `n`. -/
 def Cov {P : Program} (S : LcmSpec P) (n : Node) (M : Assignments) : Prop :=
-  Assignments.Subset (Assignments.sdiff (Assignments.sdiff (S.πᵤ n) (insertBefore P S n)) (insertOut P S n)) M
+  Assignments.Subset (Assignments.sdiff (Assignments.sdiff (S.πᵤK n) (insertBefore P S n)) (insertOut P S n)) M
 
 /-- The materialized set after node `c`'s block, before the outgoing edge (`insertAfter` = the exit chain for
     `assign`/`noop`, `∅` for `ifz`). -/
@@ -504,8 +509,11 @@ theorem Cov_step_edge {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : Well
     (hstep : Step P c c') (hcov : Cov S c.node M) : Cov S c'.node (Mstep_edge S c.node c'.node M) := by
   intro e he
   rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-  obtain ⟨⟨hu, hnia⟩, hnio⟩ := he
-  have hnlat : e ∉ latestNode P S.ηₚ S.τₚ c'.node := used_notInsertAt_notLatest S hS hu hnia hnio
+  obtain ⟨⟨huK, hnia⟩, hnio⟩ := he
+  -- `keep e` travels with the demand: it is what lets each branch land back in a *filtered* set.
+  have hkeep : S.keep e = true := (mem_πᵤK.mp huK).2
+  have hu : e ∈ S.πᵤ c'.node := πᵤK_sub S _ e huK
+  have hnlat : e ∉ latestNode P S.ηₚ S.τₚ c'.node := used_notInsertAt_notLatest S hS huK hnia hnio
   rw [Mstep_edge, Assignments.mem_union]
   by_cases htr : e ∈ pass P c.node
   · have hpred := S.isUsed.predict c c' hstep e hu
@@ -519,12 +527,14 @@ theorem Cov_step_edge {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : Well
       · have hnio_c : e ∉ insertOut P S c.node := fun hio =>
           hedge2 (latestOut_used_succ_sub_insertEdge S hS hstep hu hnlat
             (Assignments.mem_inter.mp hio).1 (Assignments.mem_inter.mp hio).2)
-        have heM : e ∈ M := hcov e (Assignments.mem_sdiff.mpr ⟨Assignments.mem_sdiff.mpr ⟨hcu, hiac⟩, hnio_c⟩)
+        have heM : e ∈ M := hcov e (Assignments.mem_sdiff.mpr
+          ⟨Assignments.mem_sdiff.mpr ⟨mem_πᵤK.mpr ⟨hcu, hkeep⟩, hiac⟩, hnio_c⟩)
         exact Or.inl (Assignments.mem_union.mpr
           (Or.inl (Assignments.mem_inter.mpr ⟨Assignments.mem_union.mpr (Or.inl heM), htr⟩)))
     · exact absurd hlat hnlat
-    · exact Or.inr (edgeIns_sub_insertEdge S hedge (S.isUsedOut.predict c c' hstep e hu))
-  · exact Or.inl (Assignments.mem_union.mpr (Or.inr (killed_in_insertAfter S hS wn hstep hu htr hnlat)))
+    · exact Or.inr (edgeIns_sub_insertEdge S hedge
+        (mem_τᵤK.mpr ⟨S.isUsedOut.predict c c' hstep e hu, hkeep⟩))
+  · exact Or.inl (Assignments.mem_union.mpr (Or.inr (killed_in_insertAfter S hS wn hstep huK htr hnlat)))
 
 /-! ## Why `πᵤ ⊆ πₐ` is false — the entry+edge placement
 

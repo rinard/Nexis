@@ -21,7 +21,9 @@ def pdceSolved (P : Program) (wf : WellFormed P) : PdceSpec P :=
   { π   := decFVar P sol.π
     η   := decFAsgn P sol.η
     isLive := πSol_valid P wf
-    isSink := ηSol_valid P wf }
+    isSink := ηSol_valid P wf
+    -- classical mode keeps everything, so the obligation is vacuous
+    keepLive := fun _ _ _ h => absurd h (by simp) }
 
 /-- …and it is extremal (least `Live`, greatest `Sink`) — the `Extremal` predicate the optimality
     development consumes. -/

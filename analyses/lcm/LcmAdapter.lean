@@ -26,6 +26,20 @@ structure LcmSpec (P : Program) where
   τₚ    : Node → Assignments
   πᵤ    : Node → Assignments
   τᵤ : Node → Assignments
+  /-- **The hoisting filter**: which expressions this run of LCM is allowed to move. Every placement set
+      (`insertBefore`/`insertAfter`/`insertEdge`) and the replacement gate (`recoverable`) is intersected
+      with it, so an expression outside `keep` is neither materialized into a temp nor replaced — it is
+      simply left where the source computes it.
+
+      `keep := fun _ => true` (the default, and what `lcmSolved` supplies) is the classical KRS transform.
+      `keep := Expr.faultFree` is the divergence-preserving mode: it declines exactly the `div`/`mod`
+      expressions that can turn a divergent run into a faulting one.
+
+      Crucially this field appears in **no validity clause** and in **no `Extremal` clause**, so changing it
+      cannot invalidate a bundle (`LcmSpec.withKeep`, `Extremal.withKeep`) — which is why both modes are
+      covered by the *same* correctness theorems, quantified as they are over an arbitrary valid,
+      extremal bundle, with no second development and no second solver. -/
+  keep : Expr → Bool := fun _ => true
   isAnti    : Anticipated P πₐ
   isAvail   : Available P ηₐ
   isPostp   : Postponable P πₐ ηₐ ηₚ
@@ -40,5 +54,47 @@ structure Extremal {P : Program} (S : LcmSpec P) : Prop where
   τₚ    : ∀ g, Transfer Assignments.Subset P S.ηₚ g → ∀ n, (g n).Subset (S.τₚ n)
   πᵤ    : ∀ g, Used P (latestNode P S.ηₚ S.τₚ) (latestEdge P S.πₐ S.ηₐ S.ηₚ) g → ∀ n, (S.πᵤ n).Subset (g n)
   τᵤ : ∀ g, Transfer Assignments.Sup P S.πᵤ g → ∀ n, (S.τᵤ n).Subset (g n)
+
+/-- Re-aim a bundle's hoisting filter. The six ghosts and every witness are untouched. -/
+def LcmSpec.withKeep {P : Program} (S : LcmSpec P) (f : Expr → Bool) : LcmSpec P :=
+  { S with keep := f }
+
+@[simp] theorem withKeep_keep {P : Program} (S : LcmSpec P) (f : Expr → Bool) :
+    (S.withKeep f).keep = f := rfl
+@[simp] theorem withKeep_πₐ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).πₐ = S.πₐ := rfl
+@[simp] theorem withKeep_ηₐ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).ηₐ = S.ηₐ := rfl
+@[simp] theorem withKeep_ηₚ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).ηₚ = S.ηₚ := rfl
+@[simp] theorem withKeep_τₚ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).τₚ = S.τₚ := rfl
+@[simp] theorem withKeep_πᵤ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).πᵤ = S.πᵤ := rfl
+@[simp] theorem withKeep_τᵤ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).τᵤ = S.τᵤ := rfl
+
+/-! ### The filtered demand ghosts
+
+Every placement set is gated by `τᵤ` and the replace gate by `πᵤ`, so applying `keep` to just these two
+accessors filters the whole placement layer — no placement definition needs its own filter, and the two
+ghosts themselves (and hence every validity and extremality witness) are untouched. -/
+
+/-- `τᵤ` restricted to the hoistable expressions — the gate on every insert set. -/
+def LcmSpec.τᵤK {P : Program} (S : LcmSpec P) (n : Node) : Assignments := (S.τᵤ n).filter S.keep
+
+/-- `πᵤ` restricted to the hoistable expressions — the upstream half of the replace gate. -/
+def LcmSpec.πᵤK {P : Program} (S : LcmSpec P) (n : Node) : Assignments := (S.πᵤ n).filter S.keep
+
+theorem mem_τᵤK {P : Program} {S : LcmSpec P} {n : Node} {e : Expr} :
+    e ∈ S.τᵤK n ↔ e ∈ S.τᵤ n ∧ S.keep e = true := Analysis.SetOps.mem_filter'
+
+theorem mem_πᵤK {P : Program} {S : LcmSpec P} {n : Node} {e : Expr} :
+    e ∈ S.πᵤK n ↔ e ∈ S.πᵤ n ∧ S.keep e = true := Analysis.SetOps.mem_filter'
+
+theorem τᵤK_sub {P : Program} (S : LcmSpec P) (n : Node) : (S.τᵤK n).Subset (S.τᵤ n) :=
+  fun _ h => (mem_τᵤK.mp h).1
+
+theorem πᵤK_sub {P : Program} (S : LcmSpec P) (n : Node) : (S.πᵤK n).Subset (S.πᵤ n) :=
+  fun _ h => (mem_πᵤK.mp h).1
+
+/-- Extremality is a statement about the six ghosts only, so it survives re-aiming the filter. -/
+theorem Extremal.withKeep {P : Program} {S : LcmSpec P} (hS : Extremal S) (f : Expr → Bool) :
+    Extremal (S.withKeep f) :=
+  ⟨hS.πₐ, hS.ηₐ, hS.ηₚ, hS.τₚ, hS.πᵤ, hS.τᵤ⟩
 
 end BaseLanguage.Analyses.LCM

@@ -21,12 +21,75 @@ open Tac Semantics Std
 structure PdceSpec (P : Program) where
   π   : Node → Variables
   η   : Node → Assignments
+  /-- **The sinking filter**: which assignments this run of PDCE is allowed to move.
+
+      PDCE loses a fault two ways, and this blocks both: an assignment outside `keep` is never
+      **deferred** (it is filtered out of `η` wherever the transform reads it, via `ηK`, so it cannot be
+      sunk past a branch) and never **eliminated** (`liveFilterK` passes it through the liveness gate even
+      when its left-hand side is dead). It therefore runs in its own birth block, on exactly the paths the
+      source runs it.
+
+      `keep := fun _ => true` is the classical KRS sinking transform; `fun a => a.rhs.faultFree` is the
+      fault-preserving mode. -/
+  keep : Asgn → Bool := fun _ => true
   isLive : Live P π
   isSink : Sink P η
+  /-- **The liveness obligation the filter induces.** Refusing to sink an assignment is not enough: the
+      transform must still *evaluate* it, and evaluating it needs its operands to hold source values. PDCE's
+      liveness is **faint** (`Live.gate` makes operands live only when the result is), so a non-`keep`
+      assignment whose left-hand side is dead would otherwise read stale operands — turning a fault-free
+      run into a faulting one. Requiring its operands live is exactly what `kills` needs to block their
+      pending definitions at this node, so they are materialized in `matNode` before the control.
+
+      Vacuous when `keep` is `fun _ => true`, so the classical mode carries no extra burden; discharged for
+      the fault-preserving mode by the strengthened liveness analysis (an extra floor clause on `π`). -/
+  keepLive : ∀ n a, a ∈ born P n → keep a = false → (rhsVars P n).Subset (π n)
 
 -- extremality predicate: `least π` ⇒ S.π ⊑ any valid g ; `greatest η` ⇒ any valid g ⊑ S.η
 structure Extremal {P : Program} (S : PdceSpec P) : Prop where
   π : ∀ g, Live P g → ∀ n, (S.π n).Subset (g n)
   η : ∀ g, Sink P g → ∀ n, (g n).Subset (S.η n)
+
+/-- Re-aim a bundle's sinking filter. Both ghosts and both validity witnesses are untouched; the caller
+    supplies the liveness obligation the new filter induces. -/
+def PdceSpec.withKeep {P : Program} (S : PdceSpec P) (f : Asgn → Bool)
+    (h : ∀ n a, a ∈ born P n → f a = false → (rhsVars P n).Subset (S.π n)) : PdceSpec P :=
+  { S with keep := f, keepLive := h }
+
+@[simp] theorem withKeep_keep {P : Program} (S : PdceSpec P) (f) (h) :
+    (S.withKeep f h).keep = f := rfl
+@[simp] theorem withKeep_π {P : Program} (S : PdceSpec P) (f) (h) : (S.withKeep f h).π = S.π := rfl
+@[simp] theorem withKeep_η {P : Program} (S : PdceSpec P) (f) (h) : (S.withKeep f h).η = S.η := rfl
+
+/-- Extremality speaks only about the two ghosts, so it survives re-aiming the filter. -/
+theorem Extremal.withKeep {P : Program} {S : PdceSpec P} (hS : Extremal S) (f) (h) :
+    Extremal (S.withKeep f h) := ⟨hS.π, hS.η⟩
+
+/-- `η` restricted to the sinkable assignments — the gate on every deferral the transform performs. -/
+def PdceSpec.ηK {P : Program} (S : PdceSpec P) (n : Node) : Assignments := (S.η n).filter S.keep
+
+theorem mem_ηK {P : Program} {S : PdceSpec P} {n : Node} {a : Asgn} :
+    a ∈ S.ηK n ↔ a ∈ S.η n ∧ S.keep a = true := Analysis.SetOps.mem_filter'
+
+theorem ηK_sub {P : Program} (S : PdceSpec P) (n : Node) : (S.ηK n).Subset (S.η n) :=
+  fun _ h => (mem_ηK.mp h).1
+
+/-- **The filtered sink is itself a valid `Sink`.** Every `Sink` clause is an *upper* bound, so
+    intersecting the ghost with any predicate preserves validity. (Extremality is of course lost — a
+    filtered greatest solution is no longer greatest — which is why the fault-preserving mode's optimality
+    is stated against competitors carrying the same filter.) -/
+theorem isSink_ηK {P : Program} (S : PdceSpec P) : Sink P S.ηK where
+  update := by
+    intro c c' hstep a ha
+    have hk := (mem_ηK.mp ha).2
+    have h := S.isSink.update c c' hstep a (ηK_sub S _ a ha)
+    rw [Assignments.mem_union, Assignments.mem_inter] at h ⊢
+    exact h.imp id (fun hh => ⟨mem_ηK.mpr ⟨hh.1, hk⟩, hh.2⟩)
+  seed := fun a ha => S.isSink.seed a (ηK_sub S _ a ha)
+  within := fun n a ha => S.isSink.within n a (ηK_sub S n a ha)
+
+/-- Not deferred at all ⇒ not deferred under the filter. -/
+theorem not_mem_ηK {P : Program} {S : PdceSpec P} {n : Node} {a : Asgn}
+    (h : a ∉ S.η n) : a ∉ S.ηK n := fun hk => h (ηK_sub S n a hk)
 
 end BaseLanguage.Analyses.PDCE

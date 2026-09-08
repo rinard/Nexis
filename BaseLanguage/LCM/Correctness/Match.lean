@@ -173,7 +173,7 @@ theorem latestNode_sub_postp {P : Program} (S : LcmSpec P) (n : Node) :
 /-- An inserted expression is in the computed universe (`usedOut`'s `bound`). -/
 theorem insertBefore_mem_allExprs {P : Program} {S : LcmSpec P} {i : Node} {e : Expr}
     (he : e ∈ (insertBefore P S i).toList) : e ∈ allExprs P := by
-  rw [mem_insertBefore] at he; exact S.isUsedOut.within i e he.2
+  rw [mem_insertBefore] at he; exact S.isUsedOut.within i e (τᵤK_sub S i e he.2)
 
 /-- **`postp ⊆ anti` is maintained across one realized step.** Uses `isPostp.1.update` (`postp(c') ⊆
     earliest ∪ (ηₚ(c) ∖ ue)`), that `earliest ⊆ πₐ` at the head, and `isAnti.1.predict`

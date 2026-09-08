@@ -29,6 +29,7 @@ The development proves, kernel-checked and axiom-clean:
 ```sh
 echo 'x := 2 + 3 * 4' | lake exe prophecyc      # source on stdin  -> AArch64 asm on stdout
 lake exe prophecyc prog.src > prog.s            # or from a file
+lake exe prophecyc --lcm=safe --pdce=safe prog.src   # the behavior-preserving optimization modes
 ```
 
 ### 2. Analyses and test programs

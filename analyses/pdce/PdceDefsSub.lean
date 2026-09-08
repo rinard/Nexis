@@ -34,6 +34,30 @@ theorem defVars_sub (P : Program) (n : Node) : (defVars P n).Subset (allVars P) 
 theorem rhsVars_sub (P : Program) (n : Node) : (rhsVars P n).Subset (allVars P) := by
   fold_sub rhsVars P n into allVars set Variables close [defV, Variables.empty]
 
+/-- The fault-preserving floor is bounded by the universe: both halves are. -/
+theorem faultingRhsVars_sub (P : Program) (n : Node) :
+    (faultingRhsVars P n).Subset (allVars P) := by
+  intro x hx
+  unfold faultingRhsVars at hx
+  cases hf : P.fetch n with
+  | none => rw [hf] at hx; exact absurd hx Std.HashSet.not_mem_empty
+  | some instr =>
+      cases instr with
+      | assign y e nx =>
+          rw [hf] at hx
+          simp only at hx
+          by_cases hff : e.faultFree = true
+          · rw [if_pos hff] at hx; exact absurd hx Std.HashSet.not_mem_empty
+          · rw [if_neg hff] at hx
+            exact rhsVars_sub P n x (by unfold rhsVars; rw [hf]; exact hx)
+      | _ => rw [hf] at hx; exact absurd hx Std.HashSet.not_mem_empty
+
+theorem liveFloorF_sub (P : Program) (n : Node) : (liveFloorF P n).Subset (allVars P) := by
+  intro x hx
+  rcases Variables.mem_union.mp hx with h | h
+  · exact condVars_sub P n x h
+  · exact faultingRhsVars_sub P n x h
+
 theorem liveSeed_sub (P : Program) : (liveSeed P).Subset (allVars P) := by
   intro x hx; unfold allVars; exact Variables.mem_union.mpr (Or.inl hx)
 

@@ -60,6 +60,47 @@ lake exe prophecyc                examples/computations/gcd.src   # assembly
 lake exe prophecyc --show-opt     examples/computations/gcd.src   # every stage at once
 ```
 
+## Optimization modes (`--lcm=`, `--pdce=`)
+
+Both structural optimizations ship in two verified modes. The defaults are the classical KRS transforms;
+the `safe` modes trade some optimization strength for a stronger behavioral guarantee.
+
+```sh
+lake exe prophecyc --lcm=safe  --emit-opt prog.src   # LCM that preserves divergence
+lake exe prophecyc --pdce=safe --emit-opt prog.src   # PDCE that preserves faults
+```
+
+| flag | modes | default |
+|---|---|---|
+| `--lcm=` | `classic` (= `krs`) · `safe` (= `preserve-divergence`) | `classic` |
+| `--pdce=` | `classic` (= `krs`) · `safe` (= `preserve-faults`) | `classic` |
+
+What each mode is proved to preserve:
+
+| | halting runs | faults | divergence |
+|---|---|---|---|
+| `--lcm=classic` | ✅ `LCM.transform_preserves_halt` | ✅ `LCM.transform_preserves_faulting` | ✗ (see below) |
+| `--lcm=safe` | ✅ `LCM.runLcm_preserves_halt` | ✅ | ✅ `LCM.runLcm_preserves_diverges` |
+| `--pdce=classic` | ✅ `PDCE.transform_preserves_halt` | ✗ (see below) | ✅ `PDCE.transform_preserves_diverges` |
+| `--pdce=safe` | ✅ `PDCE.runPdce_preserves_halt` | ✅ `PDCE.runPdce_preserves_faulting` | ✅ |
+
+The two gaps in the classical modes are duals, and both are real rather than proof artifacts:
+
+* **LCM can turn divergence into a fault** by hoisting a `div`/`mod` to a point the source never reaches.
+  `examples/lcm-divergence/DivergenceGap.lean` is an executable witness on a program that satisfies every
+  hypothesis LCM's correctness theorem assumes. `--lcm=safe` hoists only `Expr.faultFree` expressions
+  (`LcmSpec.keep`), leaving a `div`/`mod` where the source computes it and hoisting everything else
+  exactly as before — per expression, not per program.
+* **PDCE can turn a fault into a halt** by sinking a faulting assignment past a branch, or deleting it
+  when its result is dead. `--pdce=safe` does neither. It needs a *different liveness analysis*
+  (`analyses/pdcefault/PdceFault.gsl`): the classical specification with its liveness floor widened from
+  `condVars` to `condVars ∪ faultingRhsVars`, because a computation that can fault is observable and its
+  operands must stay live even when its result is dead. That is the only difference between the two
+  `.gsl` files.
+
+Optimality is stated relative to the mode: the theorems compare against placements over the same filter
+(`S.keep`), since a competitor with a different filter is a different transform, not a different analysis.
+
 ## Regenerate the verified analyses (optional)
 
 ```sh

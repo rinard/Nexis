@@ -43,8 +43,8 @@ theorem insertAfter_mem_allExprs {P : Program} {S : LcmSpec P} {i : Node} {e : E
   | none => rw [hfi] at he; simp only [Assignments.empty] at he; exact absurd he Std.HashSet.not_mem_empty
   | some instr =>
       cases instr with
-      | assign x e0 next => rw [hfi, Assignments.mem_inter] at he; exact S.isUsedOut.within i e he.2
-      | noop next => rw [hfi, Assignments.mem_inter] at he; exact S.isUsedOut.within i e he.2
+      | assign x e0 next => rw [hfi, Assignments.mem_inter] at he; exact S.isUsedOut.within i e (τᵤK_sub S i e he.2)
+      | noop next => rw [hfi, Assignments.mem_inter] at he; exact S.isUsedOut.within i e (τᵤK_sub S i e he.2)
       | ifz x z nz => rw [hfi] at he; simp only [Assignments.empty] at he; exact absurd he Std.HashSet.not_mem_empty
       | halt => rw [hfi] at he; simp only [Assignments.empty] at he; exact absurd he Std.HashSet.not_mem_empty
 
@@ -110,7 +110,7 @@ theorem match_step_noop {P : Program} (S : LcmSpec P) {nd next : Node} {σ dσ :
     (_hpa : Assignments.Subset (S.ηₚ nd) (S.πₐ nd))
     (hnfσ : ∀ e ∈ (insertBefore P S nd).toList, eval σ e ≠ none)
     (hnfeσ : ∀ e ∈ (insertAfter P S nd).toList, eval σ e ≠ none) :
-    ∃ d', Steps (transform P S) ⟨blockOff P S nd, dσ⟩ d' ∧ Match P S ⟨next, σ⟩ d' (Mstep S nd M) := by
+    ∃ d', StepsPlus (transform P S) ⟨blockOff P S nd, dσ⟩ d' ∧ Match P S ⟨next, σ⟩ d' (Mstep S nd M) := by
   have hi : nd < P.size := fetch_lt hf
   -- entry-block no-fault: transferred from the source no-fault hypothesis via non-fresh agreement
   have hnf : ∀ e ∈ (insertBefore P S nd).toList, eval dσ e ≠ none := by
@@ -131,12 +131,12 @@ theorem match_step_noop {P : Program} (S : LcmSpec P) {nd next : Node} {σ dσ :
       exprReadsVar e (tempFor P e') = false := fun e he _ _ => insert_fresh (insertAfter_mem_allExprs he)
   -- control + exit run to `⟨blockOff next, τF⟩`
   obtain ⟨τF, hsF, hoffF, honF⟩ :
-      ∃ τF, Steps (transform P S) ⟨blockOff P S nd + (insertBefore P S nd).toList.length, τ1⟩
+      ∃ τF, StepsPlus (transform P S) ⟨blockOff P S nd + (insertBefore P S nd).toList.length, τ1⟩
               ⟨blockOff P S next, τF⟩
           ∧ (∀ v, (∀ e ∈ (insertAfter P S nd).toList, tempFor P e ≠ v) → τF v = τ1 v)
           ∧ (∀ e ∈ (insertAfter P S nd).toList, some (τF (tempFor P e)) = eval τ1 e) := by
     by_cases hemp : (insertAfter P S nd).toList.isEmpty = true
-    · refine ⟨τ1, Steps.tail Steps.refl (Step.noop ?_), fun v _ => rfl, ?_⟩
+    · refine ⟨τ1, StepsPlus.single (Step.noop ?_), fun v _ => rfl, ?_⟩
       · rw [hctl]; simp only [ctrlCmd, hf, hemp, if_true]
       · intro e he; rw [List.isEmpty_iff.mp hemp] at he; simp at he
     · have hctlstep : Step (transform P S)
@@ -145,8 +145,8 @@ theorem match_step_noop {P : Program} (S : LcmSpec P) {nd next : Node} {σ dσ :
         refine Step.noop ?_; rw [hctl]; simp only [ctrlCmd, hf, if_neg hemp]
       obtain ⟨τ2, hs2, hoff2, hon2⟩ := exitBlock_exec S hi (Or.inl hf) hde hnfe hfre
       rw [if_neg hemp] at hs2
-      exact ⟨τ2, steps_trans (Steps.tail Steps.refl hctlstep) hs2, hoff2, hon2⟩
-  refine ⟨⟨blockOff P S next, τF⟩, steps_trans hs1 hsF, rfl, ?_, ?_, ?_⟩
+      exact ⟨τ2, stepsPlus_trans (StepsPlus.single hctlstep) hs2, hoff2, hon2⟩
+  refine ⟨⟨blockOff P S next, τF⟩, steps_trans_plus hs1 hsF, rfl, ?_, ?_, ?_⟩
   · -- clause 2: non-fresh agreement (exit chain writes only fresh temps)
     intro x hx; show τF x = σ x
     rw [hoffF x (fun e _ => hx e), hag1 x hx]
@@ -182,7 +182,7 @@ theorem match_step_noop {P : Program} (S : LcmSpec P) {nd next : Node} {σ dσ :
 theorem insertEdge_mem_allExprs {P : Program} {S : LcmSpec P} {i j : Node} {e : Expr}
     (he : e ∈ (insertEdge P S i j).toList) : e ∈ allExprs P := by
   rw [Assignments.mem_toList, insertEdge, Assignments.mem_inter] at he
-  exact S.isUsedOut.within i e he.2
+  exact S.isUsedOut.within i e (τᵤK_sub S i e he.2)
 
 /-- Indexing into the `z`-branch edge chain of an `ifz` block (after the `insChain` prefix and control). -/
 theorem getElem?_block_ifz_z {P : Program} {S : LcmSpec P} {nd k : Nat} {x : Var} {z nz : Node}
@@ -230,7 +230,7 @@ theorem match_step_ifz {P : Program} (S : LcmSpec P) {nd : Node} {x : Var} {z nz
     (_hpa : Assignments.Subset (S.ηₚ nd) (S.πₐ nd))
     (hnfσ : ∀ e ∈ (insertBefore P S nd).toList, eval σ e ≠ none)
     (hnfe : ∀ e ∈ (insertEdge P S nd succ).toList, eval σ e ≠ none) :
-    ∃ d', Steps (transform P S) ⟨blockOff P S nd, dσ⟩ d' ∧ Match P S ⟨succ, σ⟩ d' (Mstep_edge S nd succ M) := by
+    ∃ d', StepsPlus (transform P S) ⟨blockOff P S nd, dσ⟩ d' ∧ Match P S ⟨succ, σ⟩ d' (Mstep_edge S nd succ M) := by
   have hi : nd < P.size := fetch_lt hf
   have hnf : ∀ e ∈ (insertBefore P S nd).toList, eval dσ e ≠ none := by
     intro e he
@@ -239,10 +239,10 @@ theorem match_step_ifz {P : Program} (S : LcmSpec P) {nd : Node} {x : Var} {z nz
   have hxnf : NonFresh P x := nonFresh_of_used hf (by simp [instrUsedVars])
   -- shared assembly: any run to `⟨blockOff succ, τ2⟩` with the edge temps materialized closes `Match`.
   have finish : ∀ τ2 : Store,
-      Steps (transform P S) ⟨blockOff P S nd, dσ⟩ ⟨blockOff P S succ, τ2⟩ →
+      StepsPlus (transform P S) ⟨blockOff P S nd, dσ⟩ ⟨blockOff P S succ, τ2⟩ →
       (∀ v, (∀ e ∈ (insertEdge P S nd succ).toList, tempFor P e ≠ v) → τ2 v = τ1 v) →
       (∀ e ∈ (insertEdge P S nd succ).toList, some (τ2 (tempFor P e)) = eval τ1 e) →
-      ∃ d', Steps (transform P S) ⟨blockOff P S nd, dσ⟩ d'
+      ∃ d', StepsPlus (transform P S) ⟨blockOff P S nd, dσ⟩ d'
           ∧ Match P S ⟨succ, σ⟩ d' (Mstep_edge S nd succ M) := by
     intro τ2 hrun hag2 hon2
     refine ⟨⟨blockOff P S succ, τ2⟩, hrun, rfl, ?_, ?_, ?_⟩
@@ -331,7 +331,7 @@ theorem match_step_ifz {P : Program} (S : LcmSpec P) {nd : Node} {x : Var} {z nz
           transform_fetch hi hkb, getElem?_block_ifz_z hf hk, exitChain_getElem? hk,
           show blockOff P S nd + ((insertBefore P S nd).toList.length + 1 + k) + 1
             = blockOff P S nd + (insertBefore P S nd).toList.length + 1 + k + 1 from by omega])
-    exact finish τ2 (steps_trans hs1 (steps_trans (Steps.tail Steps.refl hstep) hchain)) hag2 hon2
+    exact finish τ2 (steps_trans_plus hs1 (stepsPlus_trans (StepsPlus.single hstep) hchain)) hag2 hon2
   · subst succ  -- nz-branch
     have hctlf : (transform P S).fetch (blockOff P S nd + (insertBefore P S nd).toList.length)
         = some (.ifz x (if (insertEdge P S nd z).toList.isEmpty then blockOff P S z
@@ -356,7 +356,7 @@ theorem match_step_ifz {P : Program} (S : LcmSpec P) {nd : Node} {x : Var} {z nz
           transform_fetch hi hkb, getElem?_block_ifz_nz hf hk, exitChain_getElem? hk,
           show blockOff P S nd + ((insertBefore P S nd).toList.length + 1 + (insertEdge P S nd z).toList.length + k) + 1
             = blockOff P S nd + (insertBefore P S nd).toList.length + 1 + (insertEdge P S nd z).toList.length + k + 1 from by omega])
-    exact finish τ2 (steps_trans hs1 (steps_trans (Steps.tail Steps.refl hstep) hchain)) hag2 hon2
+    exact finish τ2 (steps_trans_plus hs1 (stepsPlus_trans (StepsPlus.single hstep) hchain)) hag2 hon2
 
 /-- A numbered RHS of a fetched assign is in `allExprs`. -/
 theorem fetch_mem_allExprs {P : Program} {nd : Node} {x : Var} {e : Expr} {next : Node}
@@ -413,7 +413,7 @@ theorem match_step_assign {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
         (e0 ∈ M ∨ e0 ∈ insertBefore P S nd))
     (hnfσ : ∀ e ∈ (insertBefore P S nd).toList, eval σ e ≠ none)
     (hnfeσ : ∀ e ∈ (insertAfter P S nd).toList, eval (σ.update x v) e ≠ none) :
-    ∃ d', Steps (transform P S) ⟨blockOff P S nd, dσ⟩ d'
+    ∃ d', StepsPlus (transform P S) ⟨blockOff P S nd, dσ⟩ d'
         ∧ Match P S ⟨next, σ.update x v⟩ d' (Mstep S nd M) := by
   have hi : nd < P.size := fetch_lt hf
   have hstepsrc : Step P (⟨nd, σ⟩ : Config) ⟨next, σ.update x v⟩ := Step.assign hf hv
@@ -460,25 +460,25 @@ theorem match_step_assign {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
       exprReadsVar e (tempFor P e') = false := fun e he _ _ => insert_fresh (insertAfter_mem_allExprs he)
   -- control + exit run to `⟨blockOff next, τF⟩` (base store of the off/on facts is the post-assign `τ1.update x v`)
   obtain ⟨τF, hsF, hoffF, honF⟩ :
-      ∃ τF, Steps (transform P S) ⟨blockOff P S nd + (insertBefore P S nd).toList.length, τ1⟩
+      ∃ τF, StepsPlus (transform P S) ⟨blockOff P S nd + (insertBefore P S nd).toList.length, τ1⟩
               ⟨blockOff P S next, τF⟩
           ∧ (∀ w, (∀ e ∈ (insertAfter P S nd).toList, tempFor P e ≠ w) → τF w = (τ1.update x v) w)
           ∧ (∀ e ∈ (insertAfter P S nd).toList, some (τF (tempFor P e)) = eval (τ1.update x v) e) := by
     by_cases hemp : (insertAfter P S nd).toList.isEmpty = true
     · refine ⟨τ1.update x v, ?_, fun w _ => rfl, ?_⟩
-      · have hc := hctlstep; rw [if_pos hemp] at hc; exact Steps.tail Steps.refl hc
+      · have hc := hctlstep; rw [if_pos hemp] at hc; exact StepsPlus.single hc
       · intro e he; rw [List.isEmpty_iff.mp hemp] at he; simp at he
     · obtain ⟨τ2, hs2, hoff2, hon2⟩ := exitBlock_exec S hi (Or.inr ⟨x, e0, hf⟩) hde hnfe hfre
       rw [if_neg hemp] at hs2
       have hc := hctlstep; rw [if_neg hemp] at hc
-      exact ⟨τ2, steps_trans (Steps.tail Steps.refl hc) hs2, hoff2, hon2⟩
+      exact ⟨τ2, stepsPlus_trans (StepsPlus.single hc) hs2, hoff2, hon2⟩
   -- transparency read-off
   have htransp_read : ∀ e, e ∈ pass P nd → exprReadsVar e x = false := by
     intro e he
     unfold pass at he; rw [Assignments.mem_filter'] at he
     have h2 := he.2; unfold transpB at h2; rw [hf] at h2; simp only [instrDefVar] at h2
     simpa using h2
-  refine ⟨⟨blockOff P S next, τF⟩, steps_trans hs1 hsF, rfl, ?_, ?_, ?_⟩
+  refine ⟨⟨blockOff P S next, τF⟩, steps_trans_plus hs1 hsF, rfl, ?_, ?_, ?_⟩
   · -- clause 2
     intro y hy; show τF y = (σ.update x v) y
     rw [hoffF y (fun e _ => hy e), hag1' y hy]
@@ -521,22 +521,47 @@ theorem Match_union_sub {P : Program} {S : LcmSpec P} {c d : Config} {M N : Assi
     fun e he => hH e ((Assignments.mem_union.mp he).elim id (fun h => hsub e h)),
     fun e he => hMs e ((Assignments.mem_union.mp he).elim id (fun h => hsub e h))⟩
 
-/-- **`match_step` — the simulation step-case.** A source step `c → c'` is matched by running node `c`'s
-    block (entry `insChain` → floated control → the taken exit/edge chain) to the successor label,
-    re-establishing `Match` at `Mstep_edge c.node c'.node M`. The coverage clause is `Cov_step_edge`;
-    the halting continuation `hcont` certifies every inserted expression fault-free
-    (`antiNoFault`). `assign`/`noop` reuse `match_step_{assign,noop}` (at `Mstep`) and bridge to `Mstep_edge`
-    via `Match_union_sub` (the edge insert `= insertAfter ⊆ Mstep`); `ifz` uses `match_step_ifz` directly. -/
-theorem match_step {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
-    {c c' d : Config} {M : Assignments} {c_f : Config}
+/-- **`insertAfter ⊆ insertEdge` along a taken step.** At a `1-successor` source the two coincide
+    (`insertAfter_eq_insertEdge`); at an `ifz` the exit set is empty, so the inclusion is vacuous. This is
+    what lets the step-case take a *single* exit-side no-fault obligation, stated on the edge. -/
+theorem insertAfter_sub_insertEdge_of_step {P : Program} (S : LcmSpec P) {c c' : Config}
+    (hstep : Step P c c') {e : Expr} (he : e ∈ insertAfter P S c.node) :
+    e ∈ insertEdge P S c.node c'.node := by
+  cases hstep with
+  | @assign nd σ x e0 next v hf hv => rw [← insertAfter_eq_insertEdge S (Or.inr ⟨x, e0, hf⟩)]; exact he
+  | @noop nd σ next hf => rw [← insertAfter_eq_insertEdge S (Or.inl hf)]; exact he
+  | @ifzT nd σ x z nz hf _ =>
+      unfold insertAfter at he; rw [hf] at he
+      simp only [Assignments.empty] at he; exact absurd he Std.HashSet.not_mem_empty
+  | @ifzF nd σ x z nz hf _ =>
+      unfold insertAfter at he; rw [hf] at he
+      simp only [Assignments.empty] at he; exact absurd he Std.HashSet.not_mem_empty
+
+/-- **`match_step_core` — the simulation step-case, with the no-fault obligations as parameters.**
+    A source step `c → c'` is matched by running node `c`'s block (entry `insChain` → floated control →
+    the taken exit/edge chain) to the successor label, re-establishing `Match` at
+    `Mstep_edge c.node c'.node M`. The coverage clause is `Cov_step_edge`. `assign`/`noop` reuse
+    `match_step_{assign,noop}` (at `Mstep`) and bridge to `Mstep_edge` via `Match_union_sub` (the edge
+    insert `= insertAfter ⊆ Mstep`); `ifz` uses `match_step_ifz` directly.
+
+    The two `hnf*` hypotheses are the **only** place fault-freedom of the inserted expressions enters.
+    Factoring them out is what makes the development carry *two* modes over one proof:
+    * `match_step` discharges them from the **halting continuation** (`antiNoFault`: an anticipated
+      expression is evaluated by the source before it halts, so it cannot fault). That certificate is
+      unavailable on a non-terminating run — which is exactly why plain LCM does not preserve divergence.
+    * `match_step_div` (`LCM/Divergence.lean`) discharges them **syntactically**, from `Expr.faultFree`,
+      which needs no continuation and therefore also works on a divergent run. -/
+theorem match_step_core {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    {c c' d : Config} {M : Assignments}
     (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c')
-    (hcont : StepsH P c' c_f) (hfin : Final P c_f) :
-    ∃ d', Steps (transform P S) d d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M)
+    (hnfB : ∀ e ∈ (insertBefore P S c.node).toList, eval c.store e ≠ none)
+    (hnfE : ∀ e ∈ (insertEdge P S c.node c'.node).toList, eval c'.store e ≠ none) :
+    ∃ d', StepsPlus (transform P S) d d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M)
         ∧ Cov S c'.node (Mstep_edge S c.node c'.node M) := by
   obtain ⟨hlabel, hagree, hHolds, hMsub⟩ := hm
   obtain ⟨dn, dσ⟩ := d
-  suffices h : ∃ d', Steps (transform P S) ⟨dn, dσ⟩ d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M) by
+  suffices h : ∃ d', StepsPlus (transform P S) ⟨dn, dσ⟩ d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M) by
     obtain ⟨d', hsteps, hmatch⟩ := h
     exact ⟨d', hsteps, hmatch, Cov_step_edge S hS wn hstep hcov⟩
   cases hstep with
@@ -546,53 +571,47 @@ theorem match_step {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNor
       (fun hg => by
         have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by simpa using hg
         exact replace_covered S wn hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
-      (fun e he => by
-        obtain ⟨w, hw⟩ := antiNoFault S (StepsH.head (Step.assign hf hvv) hcont) hfin e
-          (insertBefore_sub_anti S hpa (Assignments.mem_toList.1 he)); rw [hw]; exact Option.some_ne_none w)
-      (fun e he => by
-        have hanti : e ∈ S.πₐ next := by
-          rw [Assignments.mem_toList] at he
-          unfold insertAfter at he; rw [hf, Assignments.mem_inter] at he
-          exact edgeIns_sub_anti S (Step.assign hf hvv) hpa he.1
-        obtain ⟨w, hw⟩ := antiNoFault S hcont hfin e hanti; rw [hw]; exact Option.some_ne_none w)
+      hnfB
+      (fun e he => hnfE e (Assignments.mem_toList.2
+        (insertAfter_sub_insertEdge_of_step S (Step.assign hf hvv) (Assignments.mem_toList.1 he))))
     exact ⟨d', hs, Match_union_sub hm' (fun e he => Assignments.mem_union.mpr
       (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inr ⟨x, e0, hf⟩)]; exact he)))⟩
   | @noop nd σ next hf =>
     subst hlabel
     obtain ⟨d', hs, hm'⟩ := match_step_noop S hf hagree hHolds hMsub hpa
-      (fun e he => by
-        obtain ⟨w, hw⟩ := antiNoFault S (StepsH.head (Step.noop hf) hcont) hfin e
-          (insertBefore_sub_anti S hpa (Assignments.mem_toList.1 he)); rw [hw]; exact Option.some_ne_none w)
-      (fun e he => by
-        have hanti : e ∈ S.πₐ next := by
-          rw [Assignments.mem_toList] at he
-          unfold insertAfter at he; rw [hf, Assignments.mem_inter] at he
-          exact edgeIns_sub_anti S (Step.noop (σ := σ) hf) hpa he.1
-        obtain ⟨w, hw⟩ := antiNoFault S hcont hfin e hanti; rw [hw]; exact Option.some_ne_none w)
+      hnfB
+      (fun e he => hnfE e (Assignments.mem_toList.2
+        (insertAfter_sub_insertEdge_of_step S (Step.noop (σ := σ) hf) (Assignments.mem_toList.1 he))))
     exact ⟨d', hs, Match_union_sub hm' (fun e he => Assignments.mem_union.mpr
       (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inl hf)]; exact he)))⟩
   | @ifzT nd σ x z nz hf hcond =>
     subst hlabel
-    exact match_step_ifz S hf (Or.inl ⟨hcond, rfl⟩) hagree hHolds hMsub hpa
-      (fun e he => by
-        obtain ⟨w, hw⟩ := antiNoFault S (StepsH.head (Step.ifzT hf hcond) hcont) hfin e
-          (insertBefore_sub_anti S hpa (Assignments.mem_toList.1 he)); rw [hw]; exact Option.some_ne_none w)
-      (fun e he => by
-        have hedge : e ∈ latestEdge P S.πₐ S.ηₐ S.ηₚ nd z :=
-          (Assignments.mem_inter.mp (Assignments.mem_toList.1 he)).1
-        obtain ⟨w, hw⟩ := antiNoFault S hcont hfin e (edgeIns_sub_anti S (Step.ifzT hf hcond) hpa hedge)
-        rw [hw]; exact Option.some_ne_none w)
+    exact match_step_ifz S hf (Or.inl ⟨hcond, rfl⟩) hagree hHolds hMsub hpa hnfB hnfE
   | @ifzF nd σ x z nz hf hcond =>
     subst hlabel
-    exact match_step_ifz S hf (Or.inr ⟨hcond, rfl⟩) hagree hHolds hMsub hpa
-      (fun e he => by
-        obtain ⟨w, hw⟩ := antiNoFault S (StepsH.head (Step.ifzF hf hcond) hcont) hfin e
-          (insertBefore_sub_anti S hpa (Assignments.mem_toList.1 he)); rw [hw]; exact Option.some_ne_none w)
-      (fun e he => by
-        have hedge : e ∈ latestEdge P S.πₐ S.ηₐ S.ηₚ nd nz :=
-          (Assignments.mem_inter.mp (Assignments.mem_toList.1 he)).1
-        obtain ⟨w, hw⟩ := antiNoFault S hcont hfin e (edgeIns_sub_anti S (Step.ifzF hf hcond) hpa hedge)
-        rw [hw]; exact Option.some_ne_none w)
+    exact match_step_ifz S hf (Or.inr ⟨hcond, rfl⟩) hagree hHolds hMsub hpa hnfB hnfE
+
+/-- **`match_step` — the halting-run step-case.** `match_step_core` with the two no-fault obligations
+    discharged from the **halting continuation**: an inserted expression is anticipated at its node
+    (`insertBefore_sub_anti` / `edgeIns_sub_anti`), and `antiNoFault` turns anticipation plus a run that
+    reaches `halt` into "the source itself evaluates it, hence it does not fault". This is the certificate
+    that a divergent run cannot supply; see `LCM/Divergence.lean` for the mode that replaces it. -/
+theorem match_step {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    {c c' d : Config} {M : Assignments} {c_f : Config}
+    (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
+    (hcov : Cov S c.node M) (hstep : Step P c c')
+    (hcont : StepsH P c' c_f) (hfin : Final P c_f) :
+    ∃ d', StepsPlus (transform P S) d d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M)
+        ∧ Cov S c'.node (Mstep_edge S c.node c'.node M) :=
+  match_step_core S hS wn hm hpa hcov hstep
+    (fun e he => by
+      obtain ⟨w, hw⟩ := antiNoFault S (StepsH.head hstep hcont) hfin e
+        (insertBefore_sub_anti S hpa (Assignments.mem_toList.1 he))
+      rw [hw]; exact Option.some_ne_none w)
+    (fun e he => by
+      rw [Assignments.mem_toList, insertEdge, Assignments.mem_inter] at he
+      obtain ⟨w, hw⟩ := antiNoFault S hcont hfin e (edgeIns_sub_anti S hstep hpa he.1)
+      rw [hw]; exact Option.some_ne_none w)
 
 /-! ## The simulation base case — `Cov(P.entry) ∅` via `πᵤ(P.entry) = ∅`
 
@@ -698,7 +717,7 @@ theorem sim {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized
       intro hfin hobs d M hm hpa hcov
       obtain ⟨d1, hsteps1, hm1, hcov1⟩ := match_step S hS wn hm hpa hcov hstep htail hfin
       obtain ⟨d_f, hsteps2, hfinf, hobsf⟩ := ih hfin hobs hm1 (postpSubAnti_step S hstep hpa) hcov1
-      exact ⟨d_f, steps_trans hsteps1 hsteps2, hfinf, hobsf⟩
+      exact ⟨d_f, steps_trans hsteps1.toSteps hsteps2, hfinf, hobsf⟩
 
 /-- **`transform_preserves_halt` — LCM correctness (terminating-run forward simulation).** On a halting
     source run, the transform halts with every observable agreeing. Requires an **extremal** bundle `S`
@@ -713,7 +732,7 @@ theorem transform_preserves_halt {P : Program} (S : LcmSpec P) (hS : Extremal S)
   have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
     intro e he
     rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd he.1.1 (used_entry_empty S hS wn hen e)
+    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
   exact sim S hS wn (steps_toH hrun) hfin hobs (match_init S σ) (postpSubAnti_entry S) hcov
 
 

@@ -94,16 +94,16 @@ def latestOut (P : Program) (S : LcmSpec P) (i : Node) : Assignments :=
     no expression is placed twice (`insertBefore_disjoint_insertAfter`, `EvalCountOpt.lean`). At an `ifz` the
     subtracted `latestOut` is the union of the two branch edges. -/
 def insertBefore (P : Program) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.inter (Assignments.sdiff (latestNode P S.ηₚ S.τₚ n) (latestOut P S n)) (S.τᵤ n)
+  Assignments.inter (Assignments.sdiff (latestNode P S.ηₚ S.τₚ n) (latestOut P S n)) (S.τᵤK n)
 
 /-- **Node-exit insert set**: `latestOut ∩ usedOut`. Realized by appending to a 1-successor source
     (`assign`/`noop`); `∅` for `ifz`/`halt`. -/
 def insertAfter (P : Program) (S : LcmSpec P) (i : Node) : Assignments :=
   match P.fetch i with
   | some (.assign _ _ next) =>
-      Assignments.inter (latestEdge P S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤ i)
+      Assignments.inter (latestEdge P S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤK i)
   | some (.noop next) =>
-      Assignments.inter (latestEdge P S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤ i)
+      Assignments.inter (latestEdge P S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤK i)
   | _ => Assignments.empty
 
 /-- **Edge-indexed insert set** (edge placement): the KRS edge insertion on an *arbitrary* edge `i → j`,
@@ -112,7 +112,7 @@ def insertAfter (P : Program) (S : LcmSpec P) (i : Node) : Assignments :=
     on the branch edge `i → j` via a per-branch **edge chain** (the on-demand critical-edge split), so no
     critical-edge split pre-pass is needed. -/
 def insertEdge (P : Program) (S : LcmSpec P) (i j : Node) : Assignments :=
-  Assignments.inter (latestEdge P S.πₐ S.ηₐ S.ηₚ i j) (S.τᵤ i)
+  Assignments.inter (latestEdge P S.πₐ S.ηₐ S.ηₚ i j) (S.τᵤK i)
 
 /-- **Unified node-exit / edge insert set** `latestOut ∩ usedOut`: the demanded part of every insertion
     leaving `n`. For a `1-successor` source (`assign`/`noop`) it is exactly `insertAfter n` (materialized by
@@ -120,12 +120,12 @@ def insertEdge (P : Program) (S : LcmSpec P) (i j : Node) : Assignments :=
     branch edge chains). The coverage layer subtracts this from `πᵤ` (nothing leaving `n` need be carried in
     `M`). -/
 def insertOut (P : Program) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.inter (latestOut P S n) (S.τᵤ n)
+  Assignments.inter (latestOut P S n) (S.τᵤK n)
 
 /-- Expressions whose temp is **recoverable** on entry to `n`: born here (`insertBefore`) or demanded from
     upstream (`πᵤ`). The replace gate — keeps insert/replace consistent. -/
 def recoverable (P : Program) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.union (S.πᵤ n) (insertBefore P S n)
+  Assignments.union (S.πᵤK n) (insertBefore P S n)
 
 /-! ## Materialization chains (straight-line `h_e := e` sequences) -/
 
@@ -237,19 +237,19 @@ def latestOutF (P : Program) (ae : Assignments) (S : LcmSpec P) (i : Node) : Ass
   | _                       => Assignments.empty
 
 def insertBeforeF (P : Program) (ae : Assignments) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.inter (Assignments.sdiff (latestNodeF P ae S.ηₚ S.τₚ n) (latestOutF P ae S n)) (S.τᵤ n)
+  Assignments.inter (Assignments.sdiff (latestNodeF P ae S.ηₚ S.τₚ n) (latestOutF P ae S n)) (S.τᵤK n)
 
 def insertAfterF (P : Program) (ae : Assignments) (S : LcmSpec P) (i : Node) : Assignments :=
   match P.fetch i with
-  | some (.assign _ _ next) => Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤ i)
-  | some (.noop next)       => Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤ i)
+  | some (.assign _ _ next) => Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤK i)
+  | some (.noop next)       => Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i next) (S.τᵤK i)
   | _ => Assignments.empty
 
 def insertEdgeF (P : Program) (ae : Assignments) (S : LcmSpec P) (i j : Node) : Assignments :=
-  Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i j) (S.τᵤ i)
+  Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i j) (S.τᵤK i)
 
 def recoverableF (P : Program) (ae : Assignments) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.union (S.πᵤ n) (insertBeforeF P ae S n)
+  Assignments.union (S.πᵤK n) (insertBeforeF P ae S n)
 
 def tempForF (P : Program) (AE : List Expr) (e : Expr) : Var := freshN P (AE.idxOf e)
 

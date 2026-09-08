@@ -39,6 +39,11 @@ def mkBasic (S : LcmSpec P) : LcmSpec P :=
 @[simp] theorem mkBasic_anti (S : LcmSpec P) : (mkBasic S).πₐ = S.πₐ := rfl
 @[simp] theorem mkBasic_avail (S : LcmSpec P) : (mkBasic S).ηₐ = S.ηₐ := rfl
 @[simp] theorem mkBasic_usedOut (S : LcmSpec P) (n : Node) : (mkBasic S).τᵤ n = allExprs P := rfl
+@[simp] theorem mkBasic_keep (S : LcmSpec P) : (mkBasic S).keep = S.keep := rfl
+/-- The basic variant keeps everything, so its filtered gate is just the universe. -/
+theorem mkBasic_mem_τᵤK (S : LcmSpec P) (n : Node) {e : Expr} (hk : S.keep e = true)
+    (h : e ∈ allExprs P) : e ∈ (mkBasic S).τᵤK n :=
+  Analysis.SetOps.mem_filter'.mpr ⟨h, hk⟩
 
 /-! ## `insBefore' = insertBefore (mkBasic S)`, and coverage read-off for the basic gate -/
 
@@ -46,9 +51,13 @@ theorem insertBefore_mkBasic (S : LcmSpec P) (n : Node) {e : Expr}
     (he : e ∈ insBefore' S n) : e ∈ insertBefore P (mkBasic S) n := by
   unfold insertBefore
   rw [Assignments.mem_inter]
-  refine ⟨he, ?_⟩
+  have hk : S.keep e = true := (Analysis.SetOps.mem_filter'.mp he).2
+  have he' : e ∈ Assignments.sdiff (latestNode P S.ηₚ S.τₚ n) (latestOut P S n) :=
+    (Analysis.SetOps.mem_filter'.mp he).1
+  refine ⟨he', ?_⟩
   -- (mkBasic S).τᵤ n = allExprs, and insBefore' ⊆ latestNode ⊆ postp ⊆ allExprs
-  exact S.isPostp.within n e (latestNode_sub_postp S n e (Assignments.mem_sdiff.mp he).1)
+  exact mkBasic_mem_τᵤK S n hk
+    (S.isPostp.within n e (latestNode_sub_postp S n e (Assignments.mem_sdiff.mp he').1))
 
 /-- Read-justification for the basic gate: at a numbered assignment the temp is materialized before the
     control. Built from `replace_covered_basic` (from the reference `S`'s `Cov` via `cov_implies_cov_basic`). -/
@@ -56,8 +65,12 @@ theorem hcovered_basic (S : LcmSpec P) {nd : Node} {x : Var} {e0 : Expr} {next :
     (hf : P.fetch nd = some (.assign x e0 next)) (wn : WellNormalized P) (hcov : Cov S nd M)
     (hg : (isNumbered e0 && (recoverable P (mkBasic S) nd).contains e0) = true) :
     e0 ∈ M ∨ e0 ∈ insertBefore P (mkBasic S) nd := by
-  have hnum : isNumbered e0 = true := (by simpa using hg : isNumbered e0 = true ∧ _).1
-  have hbasic := replace_covered_basic (mkBasic S) hf hnum (wn.noSelfRead hf hnum)
+  have hg' : isNumbered e0 = true ∧ (recoverable P (mkBasic S) nd).contains e0 = true := by
+    simpa using hg
+  have hnum : isNumbered e0 = true := hg'.1
+  have hkeep : (mkBasic S).keep e0 = true :=
+    recoverable_keep (Std.HashSet.contains_iff_mem.mp hg'.2)
+  have hbasic := replace_covered_basic (mkBasic S) hf hnum hkeep (wn.noSelfRead hf hnum)
     (cov_implies_cov_basic S hcov)
   exact hbasic.imp id (fun h => insertBefore_mkBasic S nd h)
 
@@ -77,10 +90,10 @@ theorem insertAfter_sub_mkBasic (S : LcmSpec P) (i : Node) :
     cases instr with
     | assign x ex next =>
         simp only [hf] at he ⊢; rw [Assignments.mem_inter] at he ⊢
-        exact ⟨he.1, by rw [mkBasic_usedOut]; exact S.isUsedOut.within i e he.2⟩
+        exact ⟨he.1, mkBasic_mem_τᵤK S i (mem_τᵤK.mp he.2).2 (S.isUsedOut.within i e (τᵤK_sub S i e he.2))⟩
     | noop next =>
         simp only [hf] at he ⊢; rw [Assignments.mem_inter] at he ⊢
-        exact ⟨he.1, by rw [mkBasic_usedOut]; exact S.isUsedOut.within i e he.2⟩
+        exact ⟨he.1, mkBasic_mem_τᵤK S i (mem_τᵤK.mp he.2).2 (S.isUsedOut.within i e (τᵤK_sub S i e he.2))⟩
     | ifz x z nz => simp only [hf] at he; exact absurd he Std.HashSet.not_mem_empty
     | halt => simp only [hf] at he; exact absurd he Std.HashSet.not_mem_empty
 
@@ -89,7 +102,7 @@ theorem insertEdge_sub_mkBasic (S : LcmSpec P) (i j : Node) :
   intro e he
   unfold insertEdge at *
   rw [Assignments.mem_inter] at he ⊢
-  exact ⟨he.1, by rw [mkBasic_usedOut]; exact S.isUsedOut.within i e he.2⟩
+  exact ⟨he.1, mkBasic_mem_τᵤK S i (mem_τᵤK.mp he.2).2 (S.isUsedOut.within i e (τᵤK_sub S i e he.2))⟩
 
 theorem Mstep_edge_sub_mkBasic (S : LcmSpec P) (c c' : Node) (M : Assignments) :
     Assignments.Subset (Mstep_edge S c c' M) (Mstep_edge (mkBasic S) c c' M) := by
@@ -119,12 +132,12 @@ theorem match_step_basic (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized 
     (hm : Match P (mkBasic S) c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c')
     (hcont : StepsH P c' c_f) (hfin : Final P c_f) :
-    ∃ d', Steps (transform P (mkBasic S)) d d'
+    ∃ d', StepsPlus (transform P (mkBasic S)) d d'
         ∧ Match P (mkBasic S) c' d' (Mstep_edge (mkBasic S) c.node c'.node M)
         ∧ Cov S c'.node (Mstep_edge (mkBasic S) c.node c'.node M) := by
   obtain ⟨hlabel, hagree, hHolds, hMsub⟩ := hm
   obtain ⟨dn, dσ⟩ := d
-  suffices h : ∃ d', Steps (transform P (mkBasic S)) ⟨dn, dσ⟩ d'
+  suffices h : ∃ d', StepsPlus (transform P (mkBasic S)) ⟨dn, dσ⟩ d'
       ∧ Match P (mkBasic S) c' d' (Mstep_edge (mkBasic S) c.node c'.node M) by
     obtain ⟨d', hsteps, hmatch⟩ := h
     exact ⟨d', hsteps, hmatch,
@@ -196,7 +209,7 @@ theorem sim_basic (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) :
       intro hfin hobs d M hm hpa hcov
       obtain ⟨d1, hsteps1, hm1, hcov1⟩ := match_step_basic S hS wn hm hpa hcov hstep htail hfin
       obtain ⟨d_f, hsteps2, hfinf, hobsf⟩ := ih hfin hobs hm1 (postpSubAnti_step S hstep hpa) hcov1
-      exact ⟨d_f, steps_trans hsteps1 hsteps2, hfinf, hobsf⟩
+      exact ⟨d_f, steps_trans hsteps1.toSteps hsteps2, hfinf, hobsf⟩
 
 /-- **`transform_preserves_halt_basic`** — LCM correctness for the *basic* transform (isolated insertions
     permitted). On a halting source run, the basic transform halts with every observable agreeing. -/
@@ -209,7 +222,7 @@ theorem transform_preserves_halt_basic (S : LcmSpec P) (hS : Extremal S) (wn : W
   have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
     intro e he
     rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd he.1.1 (used_entry_empty S hS wn hen e)
+    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
   exact sim_basic S hS wn (steps_toH hrun) hfin hobs (match_init (mkBasic S) σ) (postpSubAnti_entry S) hcov
 
 
@@ -359,7 +372,7 @@ theorem match_step_ifz_fault_basic (S : LcmSpec P) (hS : Extremal S) (wn : WellN
         · rw [hsu]; exact Step.ifzT hf hx0
         · rw [hsu]; exact Step.ifzF hf hxne
       obtain ⟨d', hsteps, hmatch⟩ := match_step_ifz (mkBasic S) hf hcond hagree hHolds hMsub hpa hnfσ hnfe
-      refine Or.inr ⟨d', hsteps, hmatch, ?_⟩
+      refine Or.inr ⟨d', hsteps.toSteps, hmatch, ?_⟩
       show Cov S (⟨succ, σ⟩ : Config).node
         (Mstep_edge (mkBasic S) (⟨nd, σ⟩ : Config).node (⟨succ, σ⟩ : Config).node M)
       exact cov_mono S (Cov_step_edge S hS wn hstepsrc hcov) (Mstep_edge_sub_mkBasic S nd succ M)
@@ -422,7 +435,7 @@ theorem match_step_fault_basic (S : LcmSpec P) (hS : Extremal S) (wn : WellNorma
           match_step_assign (mkBasic S) wn hf hvv hagree hHolds hMsub hpa
             (fun hg => hcovered_basic S hf wn hcov hg)
             hnfσ hnfeσ
-        exact Or.inr ⟨d', hsteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
+        exact Or.inr ⟨d', hsteps.toSteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
           (Or.inr (by rw [insertAfter_eq_insertEdge (mkBasic S) (Or.inr ⟨x, e0, hf⟩)]; exact he))),
           cov_mono S (Cov_step_edge S hS wn (Step.assign hf hvv) hcov) (Mstep_edge_sub_mkBasic S nd next M)⟩
   | @noop nd σ next hf =>
@@ -452,7 +465,7 @@ theorem match_step_fault_basic (S : LcmSpec P) (hS : Extremal S) (wn : WellNorma
       · have hnfeσ : ∀ e ∈ (insertAfter P (mkBasic S) nd).toList, eval σ e ≠ none :=
           fun e he hev => hX ⟨e, he, hev⟩
         obtain ⟨d', hsteps, hmatch⟩ := match_step_noop (mkBasic S) hf hagree hHolds hMsub hpa hnfσ hnfeσ
-        exact Or.inr ⟨d', hsteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
+        exact Or.inr ⟨d', hsteps.toSteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
           (Or.inr (by rw [insertAfter_eq_insertEdge (mkBasic S) (Or.inl hf)]; exact he))),
           cov_mono S (Cov_step_edge S hS wn (Step.noop hf) hcov) (Mstep_edge_sub_mkBasic S nd next M)⟩
   | @ifzT nd σ x z nz hf hcond =>
@@ -492,7 +505,7 @@ theorem transform_preserves_faulting_basic (S : LcmSpec P) (hS : Extremal S) (wn
   have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
     intro e he
     rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd he.1.1 (used_entry_empty S hS wn hen e)
+    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
   exact sim_fault_basic S hS wn (steps_toH hrun) hflt (match_init (mkBasic S) σ) (postpSubAnti_entry S) hcov
 
 end BaseLanguage.Analyses.LCM

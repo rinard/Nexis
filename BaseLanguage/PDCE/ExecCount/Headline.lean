@@ -258,7 +258,7 @@ theorem matNode_execF {P : Program} (S : PdceSpec P) (a0 : Asgn) {i : Node} (hi 
         ∧ (∀ a ∈ matNode P S i, τ1 a.lhs = σ a.lhs)
         ∧ stepCount (transform P S) (firesAsgn (transform P S) a0) ⟨blockOff P S i, τ⟩ (matNode P S i).length
             = ((matNode P S i).filter (fun x => decide (a0 = x))).length := by
-  have hsink : ∀ a ∈ matNode P S i, a ∈ S.η i := fun a ha => (mem_matNode.mp ha).1
+  have hsink : ∀ a ∈ matNode P S i, a ∈ S.η i := fun a ha => ηK_sub S i a (mem_matNode.mp ha).1
   refine run_matChainSeg a0 (matNode P S i) (blockOff P S i) τ σ matNode_nodup ?_ hrec ?_ ?_
   · intro k hk
     have hkb : k < (block P S i).length := by rw [block_length]; unfold blockLen; omega
@@ -369,7 +369,7 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
     have hsink_next : ∀ a, a ∈ S.η next → a ∈ S.η nd ∧ a ∈ pass P nd := by
       intro a ha
       have := S.isSink.update _ _ hstp a ha
-      rcases mem_delayedExit.mp this with hb | h
+      rcases mem_deferCand.mp this with hb | h
       · rw [show born P nd = (∅ : Assignments) from by unfold born; rw [hf]] at hb
         exact absurd hb Std.HashSet.not_mem_empty
       · exact h
@@ -387,13 +387,13 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       rcases mem_delayedExit.mp hde with hb | ⟨has, hat⟩
       · rw [show born P nd = (∅ : Assignments) from by unfold born; rw [hf]] at hb
         exact absurd hb Std.HashSet.not_mem_empty
-      · have hli : a.lhs ∈ S.π nd := hlive_mono a.lhs hls
+      · have hli : a.lhs ∈ S.π nd := hlive_mono a.lhs (live_of_mem_ηK has hls)
         have hr : eval dσ a.rhs = some (σ a.lhs) := hrec a.lhs a.rhs has hli
         rw [eval_congr (fun v hv => ?_)]
         · exact hr
         · refine hoff1 v (fun m hm hmv => ?_)
           have hmne : m ≠ a := fun h => hmat_ntransp m hm (h ▸ hat)
-          have := (hindep m (mem_matNode.mp hm |>.1) a has (hmne)).2
+          have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm |>.1)) a (ηK_sub S nd a has) hmne).2
           rw [hmv] at this; rw [this] at hv; exact absurd hv (by simp)
     have hcs : (transform P S).fetch (blockOff P S nd + (matNode P S nd).length)
         = (block P S nd)[(matNode P S nd).length]? :=
@@ -449,28 +449,30 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
         · obtain ⟨m, hm, rfl⟩ := hxn; rw [hτ2x]; exact hon1 m hm
         · rw [hτ2x, hoff1 x (fun m hm hmx => hxn ⟨m, hm, hmx⟩)]
           refine h2 x (hlive_mono x hxlive) (fun e' hmem => ?_)
-          have hat : (⟨x, e'⟩ : Asgn) ∈ pass P nd := hsink_transp _ hmem
+          have hat : (⟨x, e'⟩ : Asgn) ∈ pass P nd := hsink_transp _ (ηK_sub S nd _ hmem)
           have hde : (⟨x, e'⟩ : Asgn) ∈ delayedExit P S nd := mem_delayedExit.mpr (Or.inr ⟨hmem, hat⟩)
-          have hns : (⟨x, e'⟩ : Asgn) ∉ S.η next := hxnf e'
-          have hin : (⟨x, e'⟩ : Asgn) ∈ matEdge P S nd next := mem_matEdge.mpr ⟨hde, hns, hxlive⟩
+          have hin : (⟨x, e'⟩ : Asgn) ∈ matEdge P S nd next :=
+            mem_matEdge.mpr ⟨hde, hxnf e', Or.inl hxlive⟩
           exact hxe ⟨⟨x, e'⟩, hin, rfl⟩
     · intro x e hmem hxlive
       show eval τ2 e = some (σ x)
-      have hupd := hsink_next _ hmem
+      have hupd := hsink_next _ (ηK_sub S next _ hmem)
+      have hupdK : (⟨x, e⟩ : Asgn) ∈ S.ηK nd ∧ (⟨x, e⟩ : Asgn) ∈ pass P nd :=
+        ⟨mem_ηK.mpr ⟨hupd.1, (mem_ηK.mp hmem).2⟩, hupd.2⟩
       have hli : x ∈ S.π nd := hlive_mono x hxlive
-      have hr : eval dσ e = some (σ x) := hrec x e hupd.1 hli
+      have hr : eval dσ e = some (σ x) := hrec x e hupdK.1 hli
       rw [eval_congr (fun v hv => ?_)]
       · exact hr
       · have hvne_edge : ∀ a ∈ matEdge P S nd next, a.lhs ≠ v := by
           intro a ha hav
           have hane : a ≠ ⟨x, e⟩ := fun h => (mem_matEdge.mp ha).2.1 (h ▸ hmem)
           have := (Indep_delayedExit S hindep (mem_matEdge.mp ha).1
-            (mem_delayedExit.mpr (Or.inr hupd)) hane).2
+            (mem_delayedExit.mpr (Or.inr hupdK)) hane).2
           rw [hav] at this; rw [this] at hv; exact absurd hv (by simp)
         have hvne_node : ∀ m ∈ matNode P S nd, m.lhs ≠ v := by
           intro m hm hmv
           have hmne : m ≠ (⟨x, e⟩ : Asgn) := fun h => hmat_ntransp m hm (h ▸ hupd.2)
-          have := (hindep m (mem_matNode.mp hm).1 ⟨x, e⟩ hupd.1 hmne).2
+          have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) ⟨x, e⟩ hupd.1 hmne).2
           rw [hmv] at this; rw [this] at hv; exact absurd hv (by simp)
         rw [hoffe v hvne_edge, hoff1 v hvne_node]
     · exact Indep_step S (Step.noop hf) hindep
@@ -505,16 +507,17 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       exact (Assignments.mem_sdiff.mp hb).2 hmt
     have hop_fresh : ∀ w, w ∈ useV P nd → w ∈ S.π nd → τ1 w = σ w := by
       intro w hw hwl
-      by_cases hwf : ∃ ew, (⟨w, ew⟩ : Asgn) ∈ S.η nd
+      by_cases hwf : ∃ ew, (⟨w, ew⟩ : Asgn) ∈ S.ηK nd
       · obtain ⟨ew, hew⟩ := hwf
+        have hewη : (⟨w, ew⟩ : Asgn) ∈ S.η nd := ηK_sub S nd _ hew
         have hk : kills P nd ⟨w, ew⟩ = true := by
           simp [kills, List.contains_eq_mem, hw]
         have hntr : (⟨w, ew⟩ : Asgn) ∉ pass P nd := fun ht => by
           have := (mem_transp.mp ht).2; rw [hk] at this; exact absurd this (by simp)
         have hmn : (⟨w, ew⟩ : Asgn) ∈ matNode P S nd :=
-          mem_matNode.mpr ⟨hew, by simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hew, hntr⟩, hwl⟩
+          mem_matNode.mpr ⟨hew, by simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hewη, hntr⟩, hwl⟩
         exact hon1 ⟨w, ew⟩ hmn
-      · have hnf : ∀ e', (⟨w, e'⟩ : Asgn) ∉ S.η nd := fun e' h => hwf ⟨e', h⟩
+      · have hnf : ∀ e', (⟨w, e'⟩ : Asgn) ∉ S.ηK nd := fun e' h => hwf ⟨e', h⟩
         rw [hoff1 w (fun m hm hmw => hnf m.rhs (by rw [← hmw]; exact (mem_matNode.mp hm).1))]
         exact h2 w hwl hnf
     have hgate_live : x ∈ S.π next → ∀ w, w ∈ useV P nd → w ∈ S.π nd := by
@@ -527,19 +530,26 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       obtain ⟨hde, hns, hls⟩ := mem_matEdge.mp ha
       rcases mem_delayedExit.mp hde with hb | ⟨has, hat⟩
       · rw [hbornx, Assignments.mem_singleton] at hb; subst hb
+        have hwlive : ∀ w, w ∈ useV P nd → w ∈ S.π nd := by
+          intro w hw'
+          rcases hls with hl | hkf
+          · exact hgate_live hl w hw'
+          · refine S.keepLive nd ⟨x, e⟩ ?_ hkf w ?_
+            · rw [hbornx]; exact Assignments.mem_singleton.mpr rfl
+            · simp only [rhsVars, hf, usedVars]; exact Variables.mem_ofList.mpr hw'
         show eval τ1 e = some ((σ.update x v) x)
         rw [show (σ.update x v) x = v from by rw [Store.update, if_pos rfl]]
         rw [eval_congr (fun w hw => ?_)]
         · exact hv
-        · exact hop_fresh w (huseV ▸ readsVar_imp_mem hw) (hgate_live hls _ (huseV ▸ readsVar_imp_mem hw))
+        · exact hop_fresh w (huseV ▸ readsVar_imp_mem hw) (hwlive _ (huseV ▸ readsVar_imp_mem hw))
       · have hxne : a.lhs ≠ x := fun h => (transp_facts hat).2.1 (by rw [hdefV, h])
         rw [show (σ.update x v) a.lhs = σ a.lhs from by rw [Store.update, if_neg hxne]]
-        have hli : a.lhs ∈ S.π nd := (hpred a.lhs hls).resolve_right hxne
+        have hli : a.lhs ∈ S.π nd := (hpred a.lhs (live_of_mem_ηK has hls)).resolve_right hxne
         rw [eval_congr (fun w hw => ?_)]
         · exact hrec a.lhs a.rhs has hli
         · refine hoff1 w (fun m hm hmw => ?_)
           have hmne : m ≠ a := fun h => hmat_ntransp m hm (h ▸ hat)
-          have := (hindep m (mem_matNode.mp hm).1 a has hmne).2
+          have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) a (ηK_sub S nd a has) hmne).2
           rw [hmw] at this; rw [this] at hw; exact absurd hw (by simp)
     have hcs : (transform P S).fetch (blockOff P S nd + (matNode P S nd).length)
         = (block P S nd)[(matNode P S nd).length]? :=
@@ -593,7 +603,7 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       · obtain ⟨a, ha, rfl⟩ := hxe; exact hone a ha
       · have hx'x : x' ≠ x := fun h => hxe ⟨⟨x, e⟩,
           mem_matEdge.mpr ⟨mem_delayedExit.mpr (Or.inl (by rw [hbornx]; exact Assignments.mem_singleton.mpr rfl)),
-            h ▸ hxnf e, h ▸ hxlive⟩, h.symm⟩
+            h ▸ hxnf e, Or.inl (h ▸ hxlive)⟩, h.symm⟩
         rw [hoffe x' (fun a ha hax => hxe ⟨a, ha, hax⟩),
             show (σ.update x v) x' = σ x' from by rw [Store.update, if_neg hx'x]]
         by_cases hxn : ∃ m ∈ matNode P S nd, m.lhs = x'
@@ -601,16 +611,20 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
         · rw [hoff1 x' (fun m hm hmx => hxn ⟨m, hm, hmx⟩)]
           refine h2 x' ((hpred x' hxlive).resolve_right hx'x) (fun e' hmem => ?_)
           by_cases htr : (⟨x', e'⟩ : Asgn) ∈ pass P nd
-          · exact hxe ⟨⟨x', e'⟩, mem_matEdge.mpr ⟨mem_delayedExit.mpr (Or.inr ⟨hmem, htr⟩), hxnf e', hxlive⟩, rfl⟩
+          · exact hxe ⟨⟨x', e'⟩, mem_matEdge.mpr
+              ⟨mem_delayedExit.mpr (Or.inr ⟨hmem, htr⟩), hxnf e', Or.inl hxlive⟩, rfl⟩
           · refine hxn ⟨⟨x', e'⟩, mem_matNode.mpr ⟨hmem, ?_, (hpred x' hxlive).resolve_right hx'x⟩, rfl⟩
-            simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hmem, htr⟩
+            simp only [blockedSet, hf]
+            exact Assignments.mem_sdiff.mpr ⟨hbound nd _ (ηK_sub S nd _ hmem), htr⟩
     · intro x' e' hmem hxlive
       show eval τ2 e' = some ((σ.update x v) x')
-      have hupd := S.isSink.update _ _ hstp ⟨x', e'⟩ hmem
-      rcases mem_delayedExit.mp hupd with hb | ⟨has, hat⟩
+      have hupd := S.isSink.update _ _ hstp ⟨x', e'⟩ (ηK_sub S next _ hmem)
+      have hkeepx : S.keep (⟨x', e'⟩ : Asgn) = true := (mem_ηK.mp hmem).2
+      rcases mem_deferCand.mp hupd with hb | ⟨has, hat⟩
       · rw [hbornx, Assignments.mem_singleton] at hb
         injection hb with hxx hee
-        have hmemxe : (⟨x, e⟩ : Asgn) ∈ S.η next := by rw [← hxx, ← hee]; exact hmem
+        have hmemxe : (⟨x, e⟩ : Asgn) ∈ S.η next := by
+          rw [← hxx, ← hee]; exact ηK_sub S next _ hmem
         rw [show (σ.update x v) x' = v from by rw [hxx, Store.update, if_pos rfl], hee]
         rw [eval_congr (fun w hw => ?_)]
         · exact hv
@@ -619,24 +633,25 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
             intro a ha haw
             rcases mem_delayedExit.mp (mem_matEdge.mp ha).1 with hab | ⟨_, hatr⟩
             · rw [hbornx, Assignments.mem_singleton] at hab
-              rw [hab] at ha; exact (mem_matEdge.mp ha).2.1 hmemxe
+              rw [hab] at ha; exact (mem_matEdge.mp ha).2.1 (mem_ηK.mpr ⟨hmemxe, hxx ▸ hee ▸ hkeepx⟩)
             · exact (transp_facts hatr).1 (haw ▸ hwu)
           rw [hoffe w hwne]; exact hop_fresh w hwu (hgate_live (hxx ▸ hxlive) _ hwu)
       · have hxne : x' ≠ x := fun h => (transp_facts hat).2.1 (by rw [hdefV, h])
+        have hasK : (⟨x', e'⟩ : Asgn) ∈ S.ηK nd := mem_ηK.mpr ⟨has, hkeepx⟩
         rw [show (σ.update x v) x' = σ x' from by rw [Store.update, if_neg hxne]]
         have hli : x' ∈ S.π nd := (hpred x' hxlive).resolve_right hxne
         rw [eval_congr (fun w hw => ?_)]
-        · exact hrec x' e' has hli
+        · exact hrec x' e' hasK hli
         · have hvne_edge : ∀ a ∈ matEdge P S nd next, a.lhs ≠ w := by
             intro a ha hav
             have hane : a ≠ ⟨x', e'⟩ := fun h => (mem_matEdge.mp ha).2.1 (h ▸ hmem)
             have := (Indep_delayedExit S hindep (mem_matEdge.mp ha).1
-              (mem_delayedExit.mpr (Or.inr ⟨has, hat⟩)) hane).2
+              (mem_delayedExit.mpr (Or.inr ⟨hasK, hat⟩)) hane).2
             rw [hav] at this; rw [this] at hw; exact absurd hw (by simp)
           have hvne_node : ∀ m ∈ matNode P S nd, m.lhs ≠ w := by
             intro m hm hmv
             have hmne : m ≠ (⟨x', e'⟩ : Asgn) := fun h => hmat_ntransp m hm (h ▸ hat)
-            have := (hindep m (mem_matNode.mp hm).1 ⟨x', e'⟩ has hmne).2
+            have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) ⟨x', e'⟩ has hmne).2
             rw [hmv] at this; rw [this] at hw; exact absurd hw (by simp)
           rw [hoffe w hvne_edge, hoff1 w hvne_node]
     · exact Indep_step S hstp hindep
@@ -671,14 +686,15 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       exact (Assignments.mem_sdiff.mp hb).2 hmt
     have hop_fresh : ∀ w, w ∈ useV P nd → w ∈ S.π nd → τ1 w = σ w := by
       intro w hw hwl
-      by_cases hwf : ∃ ew, (⟨w, ew⟩ : Asgn) ∈ S.η nd
+      by_cases hwf : ∃ ew, (⟨w, ew⟩ : Asgn) ∈ S.ηK nd
       · obtain ⟨ew, hew⟩ := hwf
         have hk : kills P nd ⟨w, ew⟩ = true := by simp [kills, List.contains_eq_mem, hw]
         have hntr : (⟨w, ew⟩ : Asgn) ∉ pass P nd := fun ht => by
           have := (mem_transp.mp ht).2; rw [hk] at this; exact absurd this (by simp)
         exact hon1 ⟨w, ew⟩ (mem_matNode.mpr ⟨hew,
-          by simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hew, hntr⟩, hwl⟩)
-      · have hnf : ∀ e', (⟨w, e'⟩ : Asgn) ∉ S.η nd := fun e' h => hwf ⟨e', h⟩
+          by simp only [blockedSet, hf]
+             exact Assignments.mem_sdiff.mpr ⟨hbound nd _ (ηK_sub S nd _ hew), hntr⟩, hwl⟩)
+      · have hnf : ∀ e', (⟨w, e'⟩ : Asgn) ∉ S.ηK nd := fun e' h => hwf ⟨e', h⟩
         rw [hoff1 w (fun m hm hmw => hnf m.rhs (by rw [← hmw]; exact (mem_matNode.mp hm).1))]
         exact h2 w hwl hnf
     have hxlive_nd : x ∈ S.π nd := S.isLive.check nd x (by
@@ -690,10 +706,10 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       rcases mem_delayedExit.mp hde with hb | ⟨has, hat⟩
       · rw [hborn0] at hb; exact absurd hb Std.HashSet.not_mem_empty
       · rw [eval_congr (fun w hw => ?_)]
-        · exact hrec a.lhs a.rhs has (hlive_mono a.lhs hls)
+        · exact hrec a.lhs a.rhs has (hlive_mono a.lhs (live_of_mem_ηK has hls))
         · refine hoff1 w (fun m hm hmw => ?_)
           have hmne : m ≠ a := fun h => hmat_ntransp m hm (h ▸ hat)
-          have := (hindep m (mem_matNode.mp hm).1 a has hmne).2
+          have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) a (ηK_sub S nd a has) hmne).2
           rw [hmw] at this; rw [this] at hw; exact absurd hw (by simp)
     have hcs : (transform P S).fetch (blockOff P S nd + (matNode P S nd).length)
         = (block P S nd)[(matNode P S nd).length]? :=
@@ -761,26 +777,30 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
         · rw [hoff1 x' (fun m hm hmx => hxn ⟨m, hm, hmx⟩)]
           refine h2 x' (hlive_mono x' hxlive) (fun e' hmem => ?_)
           by_cases htr : (⟨x', e'⟩ : Asgn) ∈ pass P nd
-          · exact hxe ⟨⟨x', e'⟩, mem_matEdge.mpr ⟨mem_delayedExit.mpr (Or.inr ⟨hmem, htr⟩), hxnf e', hxlive⟩, rfl⟩
+          · exact hxe ⟨⟨x', e'⟩, mem_matEdge.mpr
+              ⟨mem_delayedExit.mpr (Or.inr ⟨hmem, htr⟩), hxnf e', Or.inl hxlive⟩, rfl⟩
           · refine hxn ⟨⟨x', e'⟩, mem_matNode.mpr ⟨hmem, ?_, hlive_mono x' hxlive⟩, rfl⟩
-            simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hmem, htr⟩
+            simp only [blockedSet, hf]
+            exact Assignments.mem_sdiff.mpr ⟨hbound nd _ (ηK_sub S nd _ hmem), htr⟩
     · intro x' e' hmem hxlive
       show eval τ2 e' = some (σ x')
-      have hupd := S.isSink.update _ _ hstp ⟨x', e'⟩ hmem
-      rcases mem_delayedExit.mp hupd with hb | ⟨has, hat⟩
+      have hupd := S.isSink.update _ _ hstp ⟨x', e'⟩ (ηK_sub S _ _ hmem)
+      have hkeepx : S.keep (⟨x', e'⟩ : Asgn) = true := (mem_ηK.mp hmem).2
+      rcases mem_deferCand.mp hupd with hb | ⟨has, hat⟩
       · rw [hborn0] at hb; exact absurd hb Std.HashSet.not_mem_empty
-      · rw [eval_congr (fun w hw => ?_)]
-        · exact hrec x' e' has (hlive_mono x' hxlive)
+      · have hasK : (⟨x', e'⟩ : Asgn) ∈ S.ηK nd := mem_ηK.mpr ⟨has, hkeepx⟩
+        rw [eval_congr (fun w hw => ?_)]
+        · exact hrec x' e' hasK (hlive_mono x' hxlive)
         · have hvne_edge : ∀ a ∈ matEdge P S nd z, a.lhs ≠ w := by
             intro a ha hav
             have hane : a ≠ ⟨x', e'⟩ := fun h => (mem_matEdge.mp ha).2.1 (h ▸ hmem)
             have := (Indep_delayedExit S hindep (mem_matEdge.mp ha).1
-              (mem_delayedExit.mpr (Or.inr ⟨has, hat⟩)) hane).2
+              (mem_delayedExit.mpr (Or.inr ⟨hasK, hat⟩)) hane).2
             rw [hav] at this; rw [this] at hw; exact absurd hw (by simp)
           have hvne_node : ∀ m ∈ matNode P S nd, m.lhs ≠ w := by
             intro m hm hmv
             have hmne : m ≠ (⟨x', e'⟩ : Asgn) := fun h => hmat_ntransp m hm (h ▸ hat)
-            have := (hindep m (mem_matNode.mp hm).1 ⟨x', e'⟩ has hmne).2
+            have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) ⟨x', e'⟩ has hmne).2
             rw [hmv] at this; rw [this] at hw; exact absurd hw (by simp)
           rw [hoffe w hvne_edge, hoff1 w hvne_node]
     · exact Indep_step S hstp hindep
@@ -815,14 +835,15 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       exact (Assignments.mem_sdiff.mp hb).2 hmt
     have hop_fresh : ∀ w, w ∈ useV P nd → w ∈ S.π nd → τ1 w = σ w := by
       intro w hw hwl
-      by_cases hwf : ∃ ew, (⟨w, ew⟩ : Asgn) ∈ S.η nd
+      by_cases hwf : ∃ ew, (⟨w, ew⟩ : Asgn) ∈ S.ηK nd
       · obtain ⟨ew, hew⟩ := hwf
         have hk : kills P nd ⟨w, ew⟩ = true := by simp [kills, List.contains_eq_mem, hw]
         have hntr : (⟨w, ew⟩ : Asgn) ∉ pass P nd := fun ht => by
           have := (mem_transp.mp ht).2; rw [hk] at this; exact absurd this (by simp)
         exact hon1 ⟨w, ew⟩ (mem_matNode.mpr ⟨hew,
-          by simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hew, hntr⟩, hwl⟩)
-      · have hnf : ∀ e', (⟨w, e'⟩ : Asgn) ∉ S.η nd := fun e' h => hwf ⟨e', h⟩
+          by simp only [blockedSet, hf]
+             exact Assignments.mem_sdiff.mpr ⟨hbound nd _ (ηK_sub S nd _ hew), hntr⟩, hwl⟩)
+      · have hnf : ∀ e', (⟨w, e'⟩ : Asgn) ∉ S.ηK nd := fun e' h => hwf ⟨e', h⟩
         rw [hoff1 w (fun m hm hmw => hnf m.rhs (by rw [← hmw]; exact (mem_matNode.mp hm).1))]
         exact h2 w hwl hnf
     have hxlive_nd : x ∈ S.π nd := S.isLive.check nd x (by
@@ -834,10 +855,10 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
       rcases mem_delayedExit.mp hde with hb | ⟨has, hat⟩
       · rw [hborn0] at hb; exact absurd hb Std.HashSet.not_mem_empty
       · rw [eval_congr (fun w hw => ?_)]
-        · exact hrec a.lhs a.rhs has (hlive_mono a.lhs hls)
+        · exact hrec a.lhs a.rhs has (hlive_mono a.lhs (live_of_mem_ηK has hls))
         · refine hoff1 w (fun m hm hmw => ?_)
           have hmne : m ≠ a := fun h => hmat_ntransp m hm (h ▸ hat)
-          have := (hindep m (mem_matNode.mp hm).1 a has hmne).2
+          have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) a (ηK_sub S nd a has) hmne).2
           rw [hmw] at this; rw [this] at hw; exact absurd hw (by simp)
     have hcs : (transform P S).fetch (blockOff P S nd + (matNode P S nd).length)
         = (block P S nd)[(matNode P S nd).length]? :=
@@ -915,26 +936,30 @@ theorem block_execCount {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 :
         · rw [hoff1 x' (fun m hm hmx => hxn ⟨m, hm, hmx⟩)]
           refine h2 x' (hlive_mono x' hxlive) (fun e' hmem => ?_)
           by_cases htr : (⟨x', e'⟩ : Asgn) ∈ pass P nd
-          · exact hxe ⟨⟨x', e'⟩, mem_matEdge.mpr ⟨mem_delayedExit.mpr (Or.inr ⟨hmem, htr⟩), hxnf e', hxlive⟩, rfl⟩
+          · exact hxe ⟨⟨x', e'⟩, mem_matEdge.mpr
+              ⟨mem_delayedExit.mpr (Or.inr ⟨hmem, htr⟩), hxnf e', Or.inl hxlive⟩, rfl⟩
           · refine hxn ⟨⟨x', e'⟩, mem_matNode.mpr ⟨hmem, ?_, hlive_mono x' hxlive⟩, rfl⟩
-            simp only [blockedSet, hf]; exact Assignments.mem_sdiff.mpr ⟨hbound nd _ hmem, htr⟩
+            simp only [blockedSet, hf]
+            exact Assignments.mem_sdiff.mpr ⟨hbound nd _ (ηK_sub S nd _ hmem), htr⟩
     · intro x' e' hmem hxlive
       show eval τ2 e' = some (σ x')
-      have hupd := S.isSink.update _ _ hstp ⟨x', e'⟩ hmem
-      rcases mem_delayedExit.mp hupd with hb | ⟨has, hat⟩
+      have hupd := S.isSink.update _ _ hstp ⟨x', e'⟩ (ηK_sub S _ _ hmem)
+      have hkeepx : S.keep (⟨x', e'⟩ : Asgn) = true := (mem_ηK.mp hmem).2
+      rcases mem_deferCand.mp hupd with hb | ⟨has, hat⟩
       · rw [hborn0] at hb; exact absurd hb Std.HashSet.not_mem_empty
-      · rw [eval_congr (fun w hw => ?_)]
-        · exact hrec x' e' has (hlive_mono x' hxlive)
+      · have hasK : (⟨x', e'⟩ : Asgn) ∈ S.ηK nd := mem_ηK.mpr ⟨has, hkeepx⟩
+        rw [eval_congr (fun w hw => ?_)]
+        · exact hrec x' e' hasK (hlive_mono x' hxlive)
         · have hvne_edge : ∀ a ∈ matEdge P S nd nz, a.lhs ≠ w := by
             intro a ha hav
             have hane : a ≠ ⟨x', e'⟩ := fun h => (mem_matEdge.mp ha).2.1 (h ▸ hmem)
             have := (Indep_delayedExit S hindep (mem_matEdge.mp ha).1
-              (mem_delayedExit.mpr (Or.inr ⟨has, hat⟩)) hane).2
+              (mem_delayedExit.mpr (Or.inr ⟨hasK, hat⟩)) hane).2
             rw [hav] at this; rw [this] at hw; exact absurd hw (by simp)
           have hvne_node : ∀ m ∈ matNode P S nd, m.lhs ≠ w := by
             intro m hm hmv
             have hmne : m ≠ (⟨x', e'⟩ : Asgn) := fun h => hmat_ntransp m hm (h ▸ hat)
-            have := (hindep m (mem_matNode.mp hm).1 ⟨x', e'⟩ has hmne).2
+            have := (hindep m (ηK_sub S nd m (mem_matNode.mp hm).1) ⟨x', e'⟩ has hmne).2
             rw [hmv] at this; rw [this] at hw; exact absurd hw (by simp)
           rw [hoffe w hvne_edge, hoff1 w hvne_node]
     · exact Indep_step S hstp hindep
@@ -985,17 +1010,24 @@ theorem execCount_fold {P : Program} (S : PdceSpec P) (wf : WellFormed P) (a0 : 
 /-- **THE HEADLINE — computational (execution-count) optimality of PDCE.** Along every terminating run, the
     transform executes each assignment `a` no more often than any safe covering placement `pl` computes it over
     the source path. Composes the fold (`execCount(transform) = matCount`) with `matCount_le_pl`
-    (`#mat ≤ #pl`). The sinking dual of LCM's `transform_evalCount_le_safe`. -/
+    (`#mat ≤ #pl`). The sinking dual of LCM's `transform_evalCount_le_safe`.
+
+    As in the LCM dual, the fuel `kt` is **pinned by the first conjunct** to a run reaching the transformed
+    program's final configuration. `execCount` is fuel-bounded (`stepCount _ 0 = 0`), so dropping that
+    conjunct would leave an unconstrained `∃ kt` that `kt := 0` discharges vacuously; the count is over the
+    *complete* transformed run. -/
 theorem transform_execCount_le_safe {P : Program} (S : PdceSpec P) (wf : WellFormed P)
-    (a : Asgn) (pl : Node → Bool) {σ : Store} {c_f : Config}
+    (a : Asgn) (hk : S.keep a = true) (pl : Node → Bool) {σ : Store} {c_f : Config}
     (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f)
     (ks : Nat) (hks : run P ⟨P.entry, σ⟩ ks = (c_f, .next c_f))
     (hcov : PlCoversAsgn P S a pl ⟨P.entry, σ⟩ ks false) :
-    ∃ kt, execCount (transform P S) a ⟨blockOff P S P.entry, σ⟩ kt
-            ≤ ((runNodes P ⟨P.entry, σ⟩ ks).filter pl).length := by
+    ∃ kt τf, run (transform P S) ⟨blockOff P S P.entry, σ⟩ kt
+                = (⟨blockOff P S c_f.node, τf⟩, .next ⟨blockOff P S c_f.node, τf⟩)
+            ∧ execCount (transform P S) a ⟨blockOff P S P.entry, σ⟩ kt
+                ≤ ((runNodes P ⟨P.entry, σ⟩ ks).filter pl).length := by
   obtain ⟨kt, τf, hrunT, hcnt⟩ :=
     execCount_fold S wf a ks ⟨P.entry, σ⟩ ⟨blockOff P S P.entry, σ⟩ c_f (match_init S σ) hfin hks
-  exact ⟨kt, by rw [hcnt]; exact matCount_le_pl S a pl σ ks hcov⟩
+  exact ⟨kt, τf, hrunT, by rw [hcnt]; exact matCount_le_pl S a hk pl σ ks hcov⟩
 
 
 end BaseLanguage.Analyses.PDCE

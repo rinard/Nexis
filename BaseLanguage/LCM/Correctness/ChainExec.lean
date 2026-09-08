@@ -422,7 +422,7 @@ theorem Assignments.nodup_toList {F : Assignments} : F.toList.Nodup :=
 
 theorem mem_insertBefore {P : Program} {S : LcmSpec P} {i : Node} {e : Expr} :
     e ∈ (insertBefore P S i).toList ↔
-      (e ∈ latestNode P S.ηₚ S.τₚ i ∧ e ∉ latestOut P S i) ∧ e ∈ S.τᵤ i := by
+      (e ∈ latestNode P S.ηₚ S.τₚ i ∧ e ∉ latestOut P S i) ∧ e ∈ S.τᵤK i := by
   rw [Assignments.mem_toList]; unfold insertBefore; rw [Assignments.mem_inter, Assignments.mem_sdiff]
 
 /-- `insertBefore ⊆ latestNode` (the entry frontier is `latestNode` minus the exit carry). -/
@@ -431,8 +431,17 @@ theorem insertBefore_sub_latestNode {P : Program} {S : LcmSpec P} {i : Node} {e 
   (mem_insertBefore.mp he).1.1
 
 theorem mem_recoverable {P : Program} {S : LcmSpec P} {i : Node} {e : Expr} :
-    e ∈ recoverable P S i ↔ e ∈ S.πᵤ i ∨ e ∈ insertBefore P S i := by
+    e ∈ recoverable P S i ↔ e ∈ S.πᵤK i ∨ e ∈ insertBefore P S i := by
   unfold recoverable; rw [Assignments.mem_union]
+
+/-- **The replace gate only ever fires on a hoistable expression.** Both halves of `recoverable` are
+    filtered by `keep`, which is exactly what keeps insertion and replacement consistent: an expression the
+    mode declines to hoist is also never rewritten to read a temp. -/
+theorem recoverable_keep {P : Program} {S : LcmSpec P} {i : Node} {e : Expr}
+    (h : e ∈ recoverable P S i) : S.keep e = true := by
+  rcases mem_recoverable.mp h with hu | hib
+  · exact (mem_πᵤK.mp hu).2
+  · exact (mem_τᵤK.mp (mem_insertBefore.mp (Assignments.mem_toList.2 hib)).2).2
 
 /-! ## The block-level insert executor
 

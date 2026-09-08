@@ -52,17 +52,18 @@ theorem matNode_dead_optimal {P : Program} {S : PdceSpec P} (hS : Extremal S) (S
     a ∈ liveFilter (Assignments.inter (S.η n) (blockedSet P n)) (S'.π n) := by
   rw [mem_matNode] at ha
   rw [mem_liveFilter, Assignments.mem_inter]
-  exact ⟨⟨ha.1, ha.2.1⟩, hS.π S'.π S'.isLive n a.lhs ha.2.2⟩
+  exact ⟨⟨ηK_sub S n a ha.1, ha.2.1⟩, hS.π S'.π S'.isLive n a.lhs ha.2.2⟩
 
 /-- **Maximal dead elimination on a split edge.** Every assignment the transform materializes on the
     edge `p → s` is also materialized by the placement using any valid liveness `live'` over the same
     delayed set; so the transform's per-edge kept set is minimal. -/
 theorem matEdge_dead_optimal {P : Program} {S : PdceSpec P} (hS : Extremal S) (S' : PdceSpec P)
-    {p s : Node} {a : Asgn} (ha : a ∈ matEdge P S p s) :
+    {p s : Node} {a : Asgn} (hk : S.keep a = true) (ha : a ∈ matEdge P S p s) :
     a ∈ liveFilter (Assignments.sdiff (delayedExit P S p) (S.η s)) (S'.π s) := by
   rw [mem_matEdge] at ha
   rw [mem_liveFilter, Assignments.mem_sdiff]
-  exact ⟨⟨ha.1, ha.2.1⟩, hS.π S'.π S'.isLive s a.lhs ha.2.2⟩
+  exact ⟨⟨ha.1, fun hcon => ha.2.1 (mem_ηK.mpr ⟨hcon, hk⟩)⟩,
+         hS.π S'.π S'.isLive s a.lhs (keep_live_of_matEdge hk ha.2.2)⟩
 
 /-! ## The measured layer — per-path sinking distance, and the literal "≥ every P'" form of O1
 
@@ -158,21 +159,25 @@ theorem regOcc_iff {live : Node → Variables} {sink : Node → Assignments} {x 
     rw [bne_iff_ne]; intro heq; exact hnf a.rhs (by cases a; cases heq; exact hmem)
 
 /-- The **per-path register-occupancy length** of variable `x` under analysis `S`: path nodes where `x` is
-    live and no assignment to `x` is in flight (`regOcc S.π S.η x`). -/
+    live and no assignment to `x` is in flight (`regOcc S.π S.ηK x`). -/
 def pathVarLiveRange {P : Program} (S : PdceSpec P) (x : Var) (path : List Node) : Nat :=
-  (path.filter (regOcc S.π S.η x)).length
+  (path.filter (regOcc S.π S.ηK x)).length
 
 /-- **Register-pressure optimality (per-path, variable level).** The transform occupies register `x` over a
     region no larger than under any valid competitor analysis `S'`. Both ghosts: greatest `sink`, least
     `live`. -/
 theorem pathVarLiveRange_le {P : Program} {S : PdceSpec P} (hS : Extremal S) (S' : PdceSpec P)
-    (x : Var) (path : List Node) :
+    (hkq : S'.keep = S.keep) (x : Var) (path : List Node) :
     pathVarLiveRange S x path ≤ pathVarLiveRange S' x path :=
   length_filter_mono
     (fun n hn => by
       rw [regOcc_iff] at hn ⊢
       obtain ⟨hlive, hnf⟩ := hn
-      exact ⟨hS.π S'.π S'.isLive n x hlive, fun e hc => hnf e (hS.η S'.η S'.isSink n ⟨x, e⟩ hc)⟩) path
+      refine ⟨hS.π S'.π S'.isLive n x hlive, fun e hc => hnf e ?_⟩
+      -- the competitor must sink under the same filter, else the comparison is between two
+      -- different transforms rather than two analyses of the same one
+      refine mem_ηK.mpr ⟨hS.η S'.η S'.isSink n ⟨x, e⟩ (ηK_sub S' n _ hc), ?_⟩
+      have := (mem_ηK.mp hc).2; rwa [hkq] at this) path
 
 /-! ## The execution-count optimality (O3) — the per-path dual of LCM's eval-count
 
@@ -211,12 +216,12 @@ def pathExecEdgeCount {P : Program} (S : PdceSpec P) (a : Asgn) (edges : List (N
 /-- **O3, edge form.** Along *every* path, the transform executes `a` on split edges no more often than any
     valid-liveness placement over the same delayed set — `matEdge_dead_optimal` lifted. -/
 theorem pathExecEdgeCount_le {P : Program} {S : PdceSpec P} (hS : Extremal S) (S' : PdceSpec P)
-    (a : Asgn) (edges : List (Node × Node)) :
+    (a : Asgn) (hk : S.keep a = true) (edges : List (Node × Node)) :
     pathExecEdgeCount S a edges
       ≤ (edges.filter (fun e =>
           decide (a ∈ liveFilter (Assignments.sdiff (delayedExit P S e.1) (S.η e.2)) (S'.π e.2)))).length :=
   length_filter_mono
-    (fun _ he => decide_eq_true (matEdge_dead_optimal hS S' (of_decide_eq_true he))) edges
+    (fun _ he => decide_eq_true (matEdge_dead_optimal hS S' hk (of_decide_eq_true he))) edges
 
 /-! ## Operational necessity — every kept assignment is live (no threading needed, unlike LCM)
 
@@ -229,8 +234,11 @@ PDCE's second ghost (`live`, backward-least) gates materialization directly — 
 theorem matNode_necessary {P : Program} {S : PdceSpec P} {n : Node} {a : Asgn}
     (ha : a ∈ matNode P S n) : a.lhs ∈ S.π n := (mem_matNode.mp ha).2.2
 
-/-- Every assignment the transform keeps on a split edge is **live** (necessary — used downstream). -/
+/-- Every assignment the transform keeps on a split edge is **live** — for the assignments the mode is
+    allowed to sink. An assignment outside `keep` is kept deliberately (it may fault, so dropping it would
+    not preserve faults), which is the one thing the classical "nothing wasted" claim does not cover. -/
 theorem matEdge_necessary {P : Program} {S : PdceSpec P} {p s : Node} {a : Asgn}
-    (ha : a ∈ matEdge P S p s) : a.lhs ∈ S.π s := (mem_matEdge.mp ha).2.2
+    (hk : S.keep a = true) (ha : a ∈ matEdge P S p s) : a.lhs ∈ S.π s :=
+  keep_live_of_matEdge hk (mem_matEdge.mp ha).2.2
 
 end BaseLanguage.Analyses.PDCE

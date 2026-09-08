@@ -27,7 +27,7 @@ set_option linter.unusedVariables false
 def regOccOrig (P : Program) (S : PdceSpec P) (x : Var) : Config → Config → Nat → Nat
   | _, _, 0      => 0
   | c, d, ks + 1 =>
-      (if regOcc S.π S.η x c.node = true ∧ d.store x = c.store x then 1 else 0)
+      (if regOcc S.π S.ηK x c.node = true ∧ d.store x = c.store x then 1 else 0)
         + (match step1 P c with
            | .next c' =>
                regOccOrig P S x c'
@@ -37,10 +37,10 @@ def regOccOrig (P : Program) (S : PdceSpec P) (x : Var) : Config → Config → 
 /-- `pathVarLiveRange` peels its head node: the occupancy indicator at `n` plus the rest. -/
 theorem pathVarLiveRange_cons {P : Program} (S : PdceSpec P) (x : Var) (n : Node) (rest : List Node) :
     pathVarLiveRange S x (n :: rest)
-      = (if regOcc S.π S.η x n = true then 1 else 0) + pathVarLiveRange S x rest := by
+      = (if regOcc S.π S.ηK x n = true then 1 else 0) + pathVarLiveRange S x rest := by
   unfold pathVarLiveRange
   rw [List.filter_cons]
-  by_cases h : regOcc S.π S.η x n = true
+  by_cases h : regOcc S.π S.ηK x n = true
   · simp [h, Nat.add_comm]
   · simp [h]
 
@@ -56,9 +56,9 @@ theorem regOccOrig_eq_pathVarLiveRange {P : Program} (S : PdceSpec P) (wf : Well
   | succ k ih =>
       intro c d hm
       -- The operational head contribution collapses to the ghost occupancy indicator (Match clause 2).
-      have hhead : (if regOcc S.π S.η x c.node = true ∧ d.store x = c.store x then (1:Nat) else 0)
-                    = (if regOcc S.π S.η x c.node = true then 1 else 0) := by
-        by_cases hocc : regOcc S.π S.η x c.node = true
+      have hhead : (if regOcc S.π S.ηK x c.node = true ∧ d.store x = c.store x then (1:Nat) else 0)
+                    = (if regOcc S.π S.ηK x c.node = true then 1 else 0) := by
+        by_cases hocc : regOcc S.π S.ηK x c.node = true
         · obtain ⟨hnode, hc2, _, _⟩ := hm
           obtain ⟨hlive, hnf⟩ := regOcc_iff.mp hocc
           have hval : d.store x = c.store x := hc2 x hlive hnf
@@ -89,12 +89,12 @@ theorem regOccOrig_eq_pathVarLiveRange {P : Program} (S : PdceSpec P) (wf : Well
     competitor's — the live-range analogue of `transform_execCountOrig_le_any`, and the honest operational
     (two-transformed-program) form of `pathVarLiveRange_le` / `transform_regPressure_le`. -/
 theorem transform_regOccOrig_le_any {P : Program} (S S' : PdceSpec P) (hS : Extremal S)
-    (wf : WellFormed P) (x : Var) (σ : Store) (ks : Nat) :
+    (wf : WellFormed P) (hkq : S'.keep = S.keep) (x : Var) (σ : Store) (ks : Nat) :
     regOccOrig P S  x ⟨P.entry, σ⟩ ⟨blockOff P S  P.entry, σ⟩ ks
       ≤ regOccOrig P S' x ⟨P.entry, σ⟩ ⟨blockOff P S' P.entry, σ⟩ ks := by
   rw [regOccOrig_eq_pathVarLiveRange S  wf x ks (match_init S  σ),
       regOccOrig_eq_pathVarLiveRange S' wf x ks (match_init S' σ)]
-  exact transform_regPressure_le hS S' x ⟨P.entry, σ⟩ ks
+  exact transform_regPressure_le hS S' hkq x ⟨P.entry, σ⟩ ks
 
 /-! ## Two-program HONEST register-pressure — the `regOccExt` fold (both disjuncts read the real store)
 
@@ -114,8 +114,8 @@ private theorem list_any_congr {α} {p q : α → Bool} :
 /-- The honest operational head: `x` materialized-and-held (`regOcc`, store agrees) **or** the operand of a
     live in-flight assignment whose rhs the transformed store recomputes. Every disjunct genuinely reads `d`. -/
 def regOccExtHead {P : Program} (S : PdceSpec P) (x : Var) (c d : Config) : Bool :=
-  (regOcc S.π S.η x c.node && decide (d.store x = c.store x))
-    || (S.η c.node).toList.any (fun a =>
+  (regOcc S.π S.ηK x c.node && decide (d.store x = c.store x))
+    || (S.ηK c.node).toList.any (fun a =>
           exprReadsVar a.rhs x && (S.π c.node).contains a.lhs
             && decide (eval d.store a.rhs = some (c.store a.lhs)))
 
@@ -123,19 +123,19 @@ def regOccExtHead {P : Program} (S : PdceSpec P) (x : Var) (c d : Config) : Bool
     store check, clause 3 the per-assignment recomputation check. So `regOccExtHead` reads the real store yet
     equals the static honest indicator. -/
 theorem regOccExtHead_eq {P : Program} {S : PdceSpec P} {x : Var} {c d : Config}
-    (hm : Match P S c d) : regOccExtHead S x c d = regOccExt S.π S.η x c.node := by
+    (hm : Match P S c d) : regOccExtHead S x c d = regOccExt S.π S.ηK x c.node := by
   obtain ⟨_, hc2, hc3, _⟩ := hm
   unfold regOccExtHead regOccExt heldForInFlight
-  have h1 : (regOcc S.π S.η x c.node && decide (d.store x = c.store x))
-            = regOcc S.π S.η x c.node := by
-    by_cases hocc : regOcc S.π S.η x c.node = true
+  have h1 : (regOcc S.π S.ηK x c.node && decide (d.store x = c.store x))
+            = regOcc S.π S.ηK x c.node := by
+    by_cases hocc : regOcc S.π S.ηK x c.node = true
     · obtain ⟨hlive, hnf⟩ := regOcc_iff.mp hocc
       simp [hocc, hc2 x hlive hnf]
     · simp only [Bool.not_eq_true] at hocc; simp [hocc]
-  have h2 : ((S.η c.node).toList.any (fun a =>
+  have h2 : ((S.ηK c.node).toList.any (fun a =>
               exprReadsVar a.rhs x && (S.π c.node).contains a.lhs
                 && decide (eval d.store a.rhs = some (c.store a.lhs))))
-            = (S.η c.node).toList.any (fun a =>
+            = (S.ηK c.node).toList.any (fun a =>
               exprReadsVar a.rhs x && (S.π c.node).contains a.lhs) := by
     apply list_any_congr
     intro a ha
@@ -162,10 +162,10 @@ def regOccExtOrig (P : Program) (S : PdceSpec P) (x : Var) : Config → Config �
 /-- `pathVarLiveRangeExt` peels its head node. -/
 theorem pathVarLiveRangeExt_cons {P : Program} (S : PdceSpec P) (x : Var) (n : Node) (rest : List Node) :
     pathVarLiveRangeExt S x (n :: rest)
-      = (if regOccExt S.π S.η x n then 1 else 0) + pathVarLiveRangeExt S x rest := by
+      = (if regOccExt S.π S.ηK x n then 1 else 0) + pathVarLiveRangeExt S x rest := by
   unfold pathVarLiveRangeExt
   rw [List.filter_cons]
-  by_cases h : regOccExt S.π S.η x n = true
+  by_cases h : regOccExt S.π S.ηK x n = true
   · simp [h, Nat.add_comm]
   · simp [h]
 
@@ -181,7 +181,7 @@ theorem regOccExtOrig_eq_pathVarLiveRangeExt {P : Program} (S : PdceSpec P) (wf 
   | succ k ih =>
       intro c d hm
       have hhead : (if regOccExtHead S x c d then (1:Nat) else 0)
-                    = (if regOccExt S.π S.η x c.node then 1 else 0) := by
+                    = (if regOccExt S.π S.ηK x c.node then 1 else 0) := by
         rw [regOccExtHead_eq hm]
       cases hstep : step1 P c with
       | next c' =>
@@ -209,11 +209,12 @@ theorem regOccExtOrig_eq_pathVarLiveRangeExt {P : Program} (S : PdceSpec P) (wf 
     assignments, each verified against the transformed store) — over a region no larger than any competitor's.
     The honest analogue of `transform_regOccOrig_le_any`, closing the moved-read undercount. -/
 theorem transform_regOccExtOrig_le_any {P : Program} (S S' : PdceSpec P) (hS : Extremal S)
-    (wf : WellFormed P) (x : Var) (h : NoMovedRead S x) (σ : Store) (ks : Nat) :
+    (wf : WellFormed P) (hkq : S'.keep = S.keep) (x : Var) (h : NoMovedRead S x)
+    (σ : Store) (ks : Nat) :
     regOccExtOrig P S  x ⟨P.entry, σ⟩ ⟨blockOff P S  P.entry, σ⟩ ks
       ≤ regOccExtOrig P S' x ⟨P.entry, σ⟩ ⟨blockOff P S' P.entry, σ⟩ ks := by
   rw [regOccExtOrig_eq_pathVarLiveRangeExt S  wf x ks (match_init S  σ),
       regOccExtOrig_eq_pathVarLiveRangeExt S' wf x ks (match_init S' σ)]
-  exact transform_honestLiveRange_le hS S' x h (runNodes P ⟨P.entry, σ⟩ ks)
+  exact transform_honestLiveRange_le hS S' hkq x h (runNodes P ⟨P.entry, σ⟩ ks)
 
 end BaseLanguage.Analyses.PDCE

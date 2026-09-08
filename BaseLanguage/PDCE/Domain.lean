@@ -91,4 +91,16 @@ def liveFilter (F : Assignments) (L : Variables) : Assignments := F.filter (fun 
 theorem mem_liveFilter {F : Assignments} {L : Variables} {a : Asgn} : a ∈ liveFilter F L ↔ a ∈ F ∧ a.lhs ∈ L := by
   unfold liveFilter; rw [Assignments.mem_filter', Std.HashSet.contains_iff_mem]
 
+/-- **The liveness gate, with an escape for non-sinkable assignments.** Dropping a dead computation is the
+    *second* way PDCE loses a fault (the first is sinking it past a branch), so an assignment outside
+    `keep` passes the gate whether or not its left-hand side is live. Sound only alongside
+    `PdceSpec.keepLive`, which keeps such an assignment's operands live. -/
+def liveFilterK (F : Assignments) (L : Variables) (keep : Asgn → Bool) : Assignments :=
+  F.filter (fun a => L.contains a.lhs || !keep a)
+
+theorem mem_liveFilterK {F : Assignments} {L : Variables} {keep : Asgn → Bool} {a : Asgn} :
+    a ∈ liveFilterK F L keep ↔ a ∈ F ∧ (a.lhs ∈ L ∨ keep a = false) := by
+  unfold liveFilterK
+  rw [Assignments.mem_filter', Bool.or_eq_true, Std.HashSet.contains_iff_mem, Bool.not_eq_true']
+
 end BaseLanguage.Analyses.PDCE

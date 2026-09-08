@@ -10,7 +10,7 @@ set_option linter.unusedVariables false
 The run-induction that carries the counting core (`LemmaA`) onto the real run. `matCount` = the source-run
 materialization count of `a` (node materialization `matNode` at the visited node + edge materialization
 `matEdge` on the taken edge); `bornRun` = the count of `a`'s site executions. The invariant
-`matCount c fuel ≤ bornRun c fuel + [a ∈ S.η c.node]` (the `+[sink]` slack = the one currently-open stretch)
+`matCount c fuel ≤ bornRun c fuel + [a ∈ S.ηK c.node]` (the `+[sink]` slack = the one currently-open stretch)
 is maintained by a **per-step** inequality proved from three atoms — the abstract bundle's `isSink.update`
 (sink entry only via `born` or delayed-with-`pass`) and the `matNode`/`matEdge` membership facts. At the
 entry `sink = ∅`, so it collapses to `#mat ≤ #born`. `matCount`/`bornRun` are filters over
@@ -56,7 +56,7 @@ theorem bornRun_next {P : Program} {a : Asgn} {c c' : Config} {f : Nat} (hs : st
 /-- **The invariant**: `#mat ≤ #born + [in-flight]`. The `+[a ∈ sink]` slack is the single currently-open
     stretch that may still materialize once using no further `born`. -/
 theorem matCount_le_bornRun_aux {P : Program} (S : PdceSpec P) (a : Asgn) : ∀ (fuel : Nat) (c : Config),
-    matCount P S a c fuel ≤ bornRun P a c fuel + (if a ∈ S.η c.node then 1 else 0) := by
+    matCount P S a c fuel ≤ bornRun P a c fuel + (if a ∈ S.ηK c.node then 1 else 0) := by
   intro fuel
   induction fuel with
   | zero => intro c; simp [matCount, bornRun]
@@ -82,41 +82,45 @@ theorem matCount_le_bornRun_aux {P : Program} (S : PdceSpec P) (a : Asgn) : ∀ 
           | ifz x z nz => rfl
           | noop nx => rfl
       -- per-step inequality `(*)`
-      have hMNsink : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have hMNsink : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       have hMNpass : a ∈ matNode P S c.node → a ∉ pass P c.node := by
         intro h; have hb := (mem_matNode.mp h).2.1; rw [hbeq] at hb; exact (Assignments.mem_sdiff.mp hb).2
-      have hMEdrop : a ∈ matEdge P S c.node c'.node → a ∉ S.η c'.node := fun h => (mem_matEdge.mp h).2.1
+      have hMEdrop : a ∈ matEdge P S c.node c'.node → a ∉ S.ηK c'.node := fun h => (mem_matEdge.mp h).2.1
       have hMEde : a ∈ matEdge P S c.node c'.node →
-          a ∈ born P c.node ∨ (a ∈ S.η c.node ∧ a ∈ pass P c.node) :=
+          a ∈ born P c.node ∨ (a ∈ S.ηK c.node ∧ a ∈ pass P c.node) :=
         fun h => mem_delayedExit.mp (mem_matEdge.mp h).1
-      have hUp : a ∈ S.η c'.node → a ∈ born P c.node ∨ (a ∈ S.η c.node ∧ a ∈ pass P c.node) := by
-        intro h; have hm := hupd a h; rw [Assignments.mem_union, Assignments.mem_inter] at hm; exact hm
+      have hUp : a ∈ S.ηK c'.node → a ∈ born P c.node ∨ (a ∈ S.ηK c.node ∧ a ∈ pass P c.node) := by
+        intro h
+        have hk := (mem_ηK.mp h).2
+        have hm := hupd a (ηK_sub S _ a h)
+        rw [Assignments.mem_union, Assignments.mem_inter] at hm
+        exact hm.imp id (fun hh => ⟨mem_ηK.mpr ⟨hh.1, hk⟩, hh.2⟩)
       have key : (if a ∈ matNode P S c.node then 1 else 0)
-          + ((if a ∈ matEdge P S c.node c'.node then 1 else 0) + (if a ∈ S.η c'.node then (1:Nat) else 0))
-          ≤ (if a ∈ born P c.node then 1 else 0) + (if a ∈ S.η c.node then 1 else 0) := by
+          + ((if a ∈ matEdge P S c.node c'.node then 1 else 0) + (if a ∈ S.ηK c'.node then (1:Nat) else 0))
+          ≤ (if a ∈ born P c.node then 1 else 0) + (if a ∈ S.ηK c.node then 1 else 0) := by
         by_cases hmn : a ∈ matNode P S c.node <;>
         by_cases hme : a ∈ matEdge P S c.node c'.node <;>
-        by_cases hsk' : a ∈ S.η c'.node <;>
+        by_cases hsk' : a ∈ S.ηK c'.node <;>
         by_cases hbo : a ∈ born P c.node <;>
-        by_cases hsk : a ∈ S.η c.node <;>
+        by_cases hsk : a ∈ S.ηK c.node <;>
         by_cases hpa : a ∈ pass P c.node <;>
           simp_all <;> omega
       rw [matCount_next hs, bornRun_next hs]
       omega
     | halt =>
-      have IH : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have IH : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       simp only [matCount, bornRun, hs]
-      by_cases hmn : a ∈ matNode P S c.node <;> by_cases hsk : a ∈ S.η c.node <;>
+      by_cases hmn : a ∈ matNode P S c.node <;> by_cases hsk : a ∈ S.ηK c.node <;>
         simp_all <;> omega
     | fault =>
-      have IH : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have IH : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       simp only [matCount, bornRun, hs]
-      by_cases hmn : a ∈ matNode P S c.node <;> by_cases hsk : a ∈ S.η c.node <;>
+      by_cases hmn : a ∈ matNode P S c.node <;> by_cases hsk : a ∈ S.ηK c.node <;>
         simp_all <;> omega
     | stuck =>
-      have IH : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have IH : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       simp only [matCount, bornRun, hs]
-      by_cases hmn : a ∈ matNode P S c.node <;> by_cases hsk : a ∈ S.η c.node <;>
+      by_cases hmn : a ∈ matNode P S c.node <;> by_cases hsk : a ∈ S.ηK c.node <;>
         simp_all <;> omega
 
 /-- **Lemma A anchored: `#mat ≤ #born` over the source run** (from the entry, where `sink = ∅`). The "≤1
@@ -124,8 +128,9 @@ theorem matCount_le_bornRun_aux {P : Program} (S : PdceSpec P) (a : Asgn) : ∀ 
 theorem matCount_le_bornRun {P : Program} (S : PdceSpec P) (a : Asgn) (σ : Store) (fuel : Nat) :
     matCount P S a ⟨P.entry, σ⟩ fuel ≤ bornRun P a ⟨P.entry, σ⟩ fuel := by
   have h := matCount_le_bornRun_aux S a fuel ⟨P.entry, σ⟩
-  have hentry : a ∉ S.η P.entry := by
-    intro hmem; have := S.isSink.seed a hmem; simp [sinkSeed, Assignments.empty] at this
+  have hentry : a ∉ S.ηK P.entry := by
+    intro hmem; have := S.isSink.seed a (ηK_sub S _ a hmem)
+    simp [sinkSeed, Assignments.empty] at this
   simpa [hentry] using h
 
 /-! ## Lemma A (live-gated) — `#mat ≤ #(live born-crossing)` over the source run
@@ -171,11 +176,12 @@ theorem pass_live_carry {P : Program} (S : PdceSpec P) {c c' : Config} (hStep : 
 
 /-- **The live-gated invariant**: `#mat ≤ #(live born-crossing) + [in-flight ∧ live]`. The `+[sink ∧ live]`
     slack is the single currently-open live stretch that may still materialize once using no further born. -/
-theorem matCount_le_liveBornCount_aux {P : Program} (S : PdceSpec P) (a : Asgn) :
+theorem matCount_le_liveBornCount_aux {P : Program} (S : PdceSpec P) (a : Asgn)
+    (hk : S.keep a = true) :
     ∀ (fuel : Nat) (c : Config),
       matCount P S a c fuel
         ≤ liveBornCount P S a c fuel
-            + (if a ∈ S.η c.node ∧ a.lhs ∈ S.π c.node then 1 else 0) := by
+            + (if a ∈ S.ηK c.node ∧ a.lhs ∈ S.π c.node then 1 else 0) := by
   intro fuel
   induction fuel with
   | zero => intro c; simp [matCount, liveBornCount]
@@ -199,29 +205,33 @@ theorem matCount_le_liveBornCount_aux {P : Program} (S : PdceSpec P) (a : Asgn) 
           | assign x e nx => rfl
           | ifz x z nz => rfl
           | noop nx => rfl
-      have hMNsink : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have hMNsink : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       have hMNpass : a ∈ matNode P S c.node → a ∉ pass P c.node := by
         intro h; have hb := (mem_matNode.mp h).2.1; rw [hbeq] at hb; exact (Assignments.mem_sdiff.mp hb).2
       have hMNlive : a ∈ matNode P S c.node → a.lhs ∈ S.π c.node := fun h => matNode_necessary h
-      have hMEdrop : a ∈ matEdge P S c.node c'.node → a ∉ S.η c'.node := fun h => (mem_matEdge.mp h).2.1
-      have hMElive : a ∈ matEdge P S c.node c'.node → a.lhs ∈ S.π c'.node := fun h => matEdge_necessary h
+      have hMEdrop : a ∈ matEdge P S c.node c'.node → a ∉ S.ηK c'.node := fun h => (mem_matEdge.mp h).2.1
+      have hMElive : a ∈ matEdge P S c.node c'.node → a.lhs ∈ S.π c'.node := fun h => matEdge_necessary hk h
       have hMEde : a ∈ matEdge P S c.node c'.node →
-          a ∈ born P c.node ∨ (a ∈ S.η c.node ∧ a ∈ pass P c.node) :=
+          a ∈ born P c.node ∨ (a ∈ S.ηK c.node ∧ a ∈ pass P c.node) :=
         fun h => mem_delayedExit.mp (mem_matEdge.mp h).1
-      have hUp : a ∈ S.η c'.node → a ∈ born P c.node ∨ (a ∈ S.η c.node ∧ a ∈ pass P c.node) := by
-        intro h; have hm := hupd a h; rw [Assignments.mem_union, Assignments.mem_inter] at hm; exact hm
+      have hUp : a ∈ S.ηK c'.node → a ∈ born P c.node ∨ (a ∈ S.ηK c.node ∧ a ∈ pass P c.node) := by
+        intro h
+        have hk := (mem_ηK.mp h).2
+        have hm := hupd a (ηK_sub S _ a h)
+        rw [Assignments.mem_union, Assignments.mem_inter] at hm
+        exact hm.imp id (fun hh => ⟨mem_ηK.mpr ⟨hh.1, hk⟩, hh.2⟩)
       have hPred : a ∈ pass P c.node → a.lhs ∈ S.π c'.node → a.lhs ∈ S.π c.node :=
         fun hp hl => pass_live_carry S hStep hp hl
       have key : (if a ∈ matNode P S c.node then 1 else 0)
           + ((if a ∈ matEdge P S c.node c'.node then 1 else 0)
-             + (if a ∈ S.η c'.node ∧ a.lhs ∈ S.π c'.node then (1:Nat) else 0))
+             + (if a ∈ S.ηK c'.node ∧ a.lhs ∈ S.π c'.node then (1:Nat) else 0))
           ≤ (if a ∈ born P c.node ∧ a.lhs ∈ S.π c'.node then 1 else 0)
-             + (if a ∈ S.η c.node ∧ a.lhs ∈ S.π c.node then 1 else 0) := by
+             + (if a ∈ S.ηK c.node ∧ a.lhs ∈ S.π c.node then 1 else 0) := by
         by_cases hmn : a ∈ matNode P S c.node <;>
         by_cases hme : a ∈ matEdge P S c.node c'.node <;>
-        by_cases hsk' : a ∈ S.η c'.node <;>
+        by_cases hsk' : a ∈ S.ηK c'.node <;>
         by_cases hbo : a ∈ born P c.node <;>
-        by_cases hsk : a ∈ S.η c.node <;>
+        by_cases hsk : a ∈ S.ηK c.node <;>
         by_cases hpa : a ∈ pass P c.node <;>
         by_cases hlv' : a.lhs ∈ S.π c'.node <;>
         by_cases hlv : a.lhs ∈ S.π c.node <;>
@@ -229,34 +239,36 @@ theorem matCount_le_liveBornCount_aux {P : Program} (S : PdceSpec P) (a : Asgn) 
       rw [matCount_next hs, liveBornCount_next hs]
       omega
     | halt =>
-      have hMNs : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have hMNs : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       have hMNl : a ∈ matNode P S c.node → a.lhs ∈ S.π c.node := fun h => matNode_necessary h
       simp only [matCount, liveBornCount, hs]
       by_cases hmn : a ∈ matNode P S c.node <;>
-        by_cases hsk : a ∈ S.η c.node <;> by_cases hlv : a.lhs ∈ S.π c.node <;>
+        by_cases hsk : a ∈ S.ηK c.node <;> by_cases hlv : a.lhs ∈ S.π c.node <;>
         simp_all <;> omega
     | fault =>
-      have hMNs : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have hMNs : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       have hMNl : a ∈ matNode P S c.node → a.lhs ∈ S.π c.node := fun h => matNode_necessary h
       simp only [matCount, liveBornCount, hs]
       by_cases hmn : a ∈ matNode P S c.node <;>
-        by_cases hsk : a ∈ S.η c.node <;> by_cases hlv : a.lhs ∈ S.π c.node <;>
+        by_cases hsk : a ∈ S.ηK c.node <;> by_cases hlv : a.lhs ∈ S.π c.node <;>
         simp_all <;> omega
     | stuck =>
-      have hMNs : a ∈ matNode P S c.node → a ∈ S.η c.node := fun h => (mem_matNode.mp h).1
+      have hMNs : a ∈ matNode P S c.node → a ∈ S.ηK c.node := fun h => (mem_matNode.mp h).1
       have hMNl : a ∈ matNode P S c.node → a.lhs ∈ S.π c.node := fun h => matNode_necessary h
       simp only [matCount, liveBornCount, hs]
       by_cases hmn : a ∈ matNode P S c.node <;>
-        by_cases hsk : a ∈ S.η c.node <;> by_cases hlv : a.lhs ∈ S.π c.node <;>
+        by_cases hsk : a ∈ S.ηK c.node <;> by_cases hlv : a.lhs ∈ S.π c.node <;>
         simp_all <;> omega
 
 /-- **Lemma A, live-gated: `#mat ≤ #(live born-crossing)` over the source run** (from the entry, `sink = ∅`).
     Closes the transform half of the count on the placement-invariant unit. -/
-theorem matCount_le_liveBornCount {P : Program} (S : PdceSpec P) (a : Asgn) (σ : Store) (fuel : Nat) :
+theorem matCount_le_liveBornCount {P : Program} (S : PdceSpec P) (a : Asgn)
+    (hk : S.keep a = true) (σ : Store) (fuel : Nat) :
     matCount P S a ⟨P.entry, σ⟩ fuel ≤ liveBornCount P S a ⟨P.entry, σ⟩ fuel := by
-  have h := matCount_le_liveBornCount_aux S a fuel ⟨P.entry, σ⟩
-  have hentry : a ∉ S.η P.entry := by
-    intro hmem; have := S.isSink.seed a hmem; simp [sinkSeed, Assignments.empty] at this
+  have h := matCount_le_liveBornCount_aux S a hk fuel ⟨P.entry, σ⟩
+  have hentry : a ∉ S.ηK P.entry := by
+    intro hmem; have := S.isSink.seed a (ηK_sub S _ a hmem)
+    simp [sinkSeed, Assignments.empty] at this
   simpa [hentry] using h
 
 /-! ## Lemma B (direct) — `#(live born-crossing) ≤ #pl` over the source run
@@ -348,10 +360,11 @@ theorem liveBornCount_le_pl {P : Program} (S : PdceSpec P) (a : Asgn) (pl : Node
 /-- **Lemma A ∘ Lemma B — `#mat ≤ #pl` over the source run** (the quantitative heart of PDCE exec-count
     optimality, modulo the fold `execCount(transform) = matCount`). Every materialization the transform
     performs along the source run is matched by a computation of any safe covering placement `pl`. -/
-theorem matCount_le_pl {P : Program} (S : PdceSpec P) (a : Asgn) (pl : Node → Bool) (σ : Store) (ks : Nat)
+theorem matCount_le_pl {P : Program} (S : PdceSpec P) (a : Asgn) (hk : S.keep a = true)
+    (pl : Node → Bool) (σ : Store) (ks : Nat)
     (hcov : PlCoversAsgn P S a pl ⟨P.entry, σ⟩ ks false) :
     matCount P S a ⟨P.entry, σ⟩ ks ≤ ((runNodes P ⟨P.entry, σ⟩ ks).filter pl).length := by
-  have hA := matCount_le_liveBornCount S a σ ks
+  have hA := matCount_le_liveBornCount S a hk σ ks
   have hB := liveBornCount_le_pl S a pl ⟨P.entry, σ⟩ ks hcov
   omega
 

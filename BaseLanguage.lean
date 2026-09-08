@@ -48,6 +48,12 @@ import BaseLanguage.LCM.EvalCount
 import BaseLanguage.LCM.EvalCountOpt
 import BaseLanguage.LCM.EvalCountPlace
 import BaseLanguage.LCM.EvalCountHeadline
+-- LCM preserves divergence in the fault-free-insertion mode (`transform_preserves_diverges`): the
+-- `Diverge → Diverge` cell the classical hoist leaves open, via the same simulation with a syntactic
+-- no-fault certificate in place of the halting continuation.
+import BaseLanguage.LCM.Divergence
+-- Mode selection (`runLcm`): `classic` (KRS, divergence out of scope) vs `preserveDivergence`.
+import BaseLanguage.LCM.Mode
 -- Basic-variant (isolated-insertion) LCM: halt + fault preservation (`transform_preserves_{halt,faulting}_basic`).
 import BaseLanguage.LCM.BasicCorrect
 -- The two flat/staged order-theoretic keystone findings (`gs_not_greatest` = thm:no-greatest,
@@ -61,6 +67,11 @@ import BaseLanguage.PDCE.Correctness
 -- PDCE preserves divergence (`transform_preserves_diverges`): the `Diverge → Diverge` cell of the
 -- §4.5 outcome table, via the non-stuttering block expansion + the generic divergence engine.
 import BaseLanguage.PDCE.Divergence
+-- PDCE preserves faults in the fault-free-sinking mode (`transform_preserves_faulting`): the cell the
+-- classical sinking transform leaves open, since it can push a faulting command past a branch or delete
+-- it outright. The mode's bundle comes from `analyses/pdcefault` (the liveness floor widened by one
+-- clause) and is selected in `Seam/pdce/Mode.lean`.
+import BaseLanguage.PDCE.FaultPreservation
 import BaseLanguage.PDCE.Optimality
 -- Execution-count optimality (computational capstone): `transform_execCount_le_safe` — along every run the
 -- transform evaluates each expression no more often than any safe placement (proved, axiom-clean).

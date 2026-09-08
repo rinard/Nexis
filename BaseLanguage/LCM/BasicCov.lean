@@ -39,14 +39,15 @@ variable {P : Program}
 /-! ## Basic insert quantities (τ_u = allExprs inlined = optimal insert with `∩ τᵤ` dropped) -/
 
 def insBefore' (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.sdiff (latestNode P S.ηₚ S.τₚ n) (latestOut P S n)
+  (Assignments.sdiff (latestNode P S.ηₚ S.τₚ n) (latestOut P S n)).filter S.keep
 
 def insOut' (S : LcmSpec P) (n : Node) : Assignments :=
   latestOut P S n
 
 /-- Basic coverage invariant — every *computation* not freshly placed at `n` is materialized in `M`. -/
 def Cov_basic (S : LcmSpec P) (n : Node) (M : Assignments) : Prop :=
-  Assignments.Subset (Assignments.sdiff (Assignments.sdiff (ue P n) (insBefore' S n)) (insOut' S n)) M
+  Assignments.Subset
+    (Assignments.sdiff (Assignments.sdiff ((ue P n).filter S.keep) (insBefore' S n)) (insOut' S n)) M
 
 /-- Basic materialized-set update across `c → c'` (τ_u-free; uses `insOut'` for the exit, `latestEdge` for the
     edge — a *superset* of the optimal `Mstep_edge`, which is all coverage needs). -/
@@ -61,13 +62,15 @@ theorem insBefore'_sub_anti (S : LcmSpec P) {n : Node}
     (hpa : Assignments.Subset (S.ηₚ n) (S.πₐ n)) :
     Assignments.Subset (insBefore' S n) (S.πₐ n) := by
   intro e he
-  exact hpa e (latestNode_sub_postp S n e (Assignments.mem_sdiff.mp he).1)
+  exact hpa e (latestNode_sub_postp S n e
+    (Assignments.mem_sdiff.mp (Analysis.SetOps.mem_filter'.mp he).1).1)
 
 /-! ## Insert containments (basic ⊇ optimal) -/
 
 theorem insertBefore_sub_insBefore' (S : LcmSpec P) (n : Node) :
     Assignments.Subset (insertBefore P S n) (insBefore' S n) := by
-  intro e he; unfold insertBefore at he; rw [Assignments.mem_inter] at he; exact he.1
+  intro e he; unfold insertBefore at he; rw [Assignments.mem_inter] at he
+  exact Analysis.SetOps.mem_filter'.mpr ⟨he.1, (mem_τᵤK.mp he.2).2⟩
 
 theorem insertOut_sub_insOut' (S : LcmSpec P) (n : Node) :
     Assignments.Subset (insertOut P S n) (insOut' S n) := by
@@ -124,9 +127,11 @@ theorem ue_transp_notLatestOut (S : LcmSpec P) {nd : Node} {x : Var} {e : Expr} 
     `Cov_basic` puts it in `M`. `π_u`-free (no `S.πᵤ`, no `Extremal`). -/
 theorem replace_covered_basic (S : LcmSpec P) {nd : Node} {x : Var} {e0 : Expr} {next : Node} {M : Assignments}
     (hf : P.fetch nd = some (.assign x e0 next)) (hnum : isNumbered e0 = true)
+    (hkeep : S.keep e0 = true)
     (hnsr : exprReadsVar e0 x = false) (hcov : Cov_basic S nd M) :
     e0 ∈ M ∨ e0 ∈ insBefore' S nd := by
-  have hcomp : e0 ∈ ue P nd := by
+  have hcomp : e0 ∈ (ue P nd).filter S.keep := by
+    refine Analysis.SetOps.mem_filter'.mpr ⟨?_, hkeep⟩
     unfold ue; rw [hf]; simp only [hnum, if_true]; exact Assignments.mem_singleton.2 rfl
   by_cases hib : e0 ∈ insBefore' S nd
   · exact Or.inr hib
@@ -142,16 +147,20 @@ theorem cov_implies_cov_basic (S : LcmSpec P) {n : Node} {M : Assignments}
     (hcov : Cov S n M) : Cov_basic S n M := by
   intro e he
   rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-  obtain ⟨⟨hue, hnib'⟩, hnio'⟩ := he
+  obtain ⟨⟨hueK, hnib'⟩, hnio'⟩ := he
+  have hkeep : S.keep e = true := (Analysis.SetOps.mem_filter'.mp hueK).2
+  have hue : e ∈ ue P n := (Analysis.SetOps.mem_filter'.mp hueK).1
   by_cases hused : e ∈ S.πᵤ n
   · exact hcov e (Assignments.mem_sdiff.mpr
-      ⟨Assignments.mem_sdiff.mpr ⟨hused, fun hib => hnib' (insertBefore_sub_insBefore' S n e hib)⟩,
+      ⟨Assignments.mem_sdiff.mpr ⟨mem_πᵤK.mpr ⟨hused, hkeep⟩,
+        fun hib => hnib' (insertBefore_sub_insBefore' S n e hib)⟩,
        fun hio => hnio' (insertOut_sub_insOut' S n e hio)⟩)
   · have hln : e ∈ latestNode P S.ηₚ S.τₚ n := by
       by_cases h : e ∈ latestNode P S.ηₚ S.τₚ n
       · exact h
       · exact absurd (S.isUsed.check n e (Assignments.mem_sdiff.mpr ⟨hue, h⟩)) hused
-    exact absurd (Assignments.mem_sdiff.mpr ⟨hln, hnio'⟩) hnib'
+    exact absurd (Analysis.SetOps.mem_filter'.mpr
+      ⟨Assignments.mem_sdiff.mpr ⟨hln, hnio'⟩, hkeep⟩) hnib'
 
 /-- `Cov` is monotone in `M`. -/
 theorem cov_mono (S : LcmSpec P) {n : Node} {M M' : Assignments}

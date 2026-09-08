@@ -21,9 +21,16 @@ theorem transform_execCount_le_safe (S : PdceSpec P) (wf : WellFormed P)
     (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f)
     (ks : Nat) (hks : run P ⟨P.entry, σ⟩ ks = (c_f, .next c_f))
     (hcov : PlCoversAsgn P S a pl ⟨P.entry, σ⟩ ks false) :
-    ∃ kt, execCount (transform P S) a ⟨blockOff P S P.entry, σ⟩ kt
-            ≤ ((runNodes P ⟨P.entry, σ⟩ ks).filter pl).length
+    ∃ kt τf, run (transform P S) ⟨blockOff P S P.entry, σ⟩ kt
+                = (⟨blockOff P S c_f.node, τf⟩, .next ⟨blockOff P S c_f.node, τf⟩)
+            ∧ execCount (transform P S) a ⟨blockOff P S P.entry, σ⟩ kt
+                ≤ ((runNodes P ⟨P.entry, σ⟩ ks).filter pl).length
 ```
+
+The `run …  kt = …` conjunct is **load-bearing, not decoration**: it pins `kt` to a fuel that carries the
+transformed program to its final configuration. `execCount` is fuel-bounded (`stepCount _ 0 = 0`), so the
+bare `∃ kt, execCount … kt ≤ …` form is discharged by `kt := 0` no matter what the hypotheses say. The
+same applies to the LCM dual.
 
 Per-assignment; the total over all `a ∈ allAsgns` follows by summing (each term `≤`). `pl : Node → Bool` is an
 **arbitrary** competing placement with a coverage **hypothesis** `PlCoversAsgn` — we never construct it, so
@@ -86,9 +93,9 @@ materialization per live `born`-crossing" (Lemma A). Everything is a projection 
     `n` kills it) and is live there is materialized at the node entry. Uses only `isSink.within` (to place
     `a` in `allAsgns`, hence in `blockedSet`) and the `matNode`/`blockedSet` definitions. -/
 theorem sink_blocked_materialized {P : Program} (S : PdceSpec P) {n : Node} {a : Asgn}
-    (hin : a ∈ S.η n) (hnp : a ∉ pass P n) (hlive : a.lhs ∈ S.π n) :
+    (hin : a ∈ S.ηK n) (hnp : a ∉ pass P n) (hlive : a.lhs ∈ S.π n) :
     a ∈ matNode P S n := by
-  have hall : a ∈ allAsgns P := S.isSink.within n a hin
+  have hall : a ∈ allAsgns P := S.isSink.within n a (ηK_sub S n a hin)
   have hblk : a ∈ blockedSet P n := by
     unfold blockedSet
     split
@@ -100,9 +107,9 @@ theorem sink_blocked_materialized {P : Program} (S : PdceSpec P) {n : Node} {a :
     the merge drops at the successor `s` (`a ∉ sink s`) and is live at `s` is materialized on the edge `p → s`.
     Uses only the `delayedExit`/`matEdge` definitions (`a ∈ sink p ∩ pass p ⊆ delayedExit p`). -/
 theorem sink_mergedrop_materialized {P : Program} (S : PdceSpec P) {p s : Node} {a : Asgn}
-    (hin : a ∈ S.η p) (hp : a ∈ pass P p) (hout : a ∉ S.η s) (hlive : a.lhs ∈ S.π s) :
+    (hin : a ∈ S.ηK p) (hp : a ∈ pass P p) (hout : a ∉ S.ηK s) (hlive : a.lhs ∈ S.π s) :
     a ∈ matEdge P S p s :=
-  mem_matEdge.mpr ⟨mem_delayedExit.mpr (Or.inr ⟨hin, hp⟩), hout, hlive⟩
+  mem_matEdge.mpr ⟨mem_delayedExit.mpr (Or.inr ⟨hin, hp⟩), hout, Or.inl hlive⟩
 
 /-- **THE INTERVAL-EXIT INVARIANT.** Along a source step `c → c'`, a candidate in flight entering `c`
     (`a ∈ sink c.node`) that leaves flight (`a ∉ sink c'.node`) and is live across the boundary is
@@ -112,7 +119,7 @@ theorem sink_mergedrop_materialized {P : Program} (S : PdceSpec P) {p s : Node} 
     `born`-crossing" (Lemma A — the placement-invariant counting unit is the live `born`-crossing, not this
     stretch). -/
 theorem inflight_exit {P : Program} (S : PdceSpec P) {c c' : Config} (hstep : Step P c c')
-    {a : Asgn} (hin : a ∈ S.η c.node) (hout : a ∉ S.η c'.node)
+    {a : Asgn} (hin : a ∈ S.ηK c.node) (hout : a ∉ S.ηK c'.node)
     (hlc : a.lhs ∈ S.π c.node) (hlc' : a.lhs ∈ S.π c'.node) :
     a ∈ matNode P S c.node ∨ a ∈ matEdge P S c.node c'.node := by
   by_cases hp : a ∈ pass P c.node

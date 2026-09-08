@@ -49,6 +49,7 @@ def emitAnalysis (gslPath : String) : IO Unit := do
 def manifest : List String :=
   [ "analyses/live/Live.gsl"              -- standalone bwd·may·gate (meets-form), non-bundle demo
   , "analyses/pdce/Pdce.gsl"              -- Sink (fwd·must) + Live (bwd·may·gate), bundle; compiler-facing
+  , "analyses/pdcefault/PdceFault.gsl"    -- PDCE + one floor clause: fault-preserving liveness
   -- the base-family fixpoint analyses (fwd/bwd · must/may), node-locals from `Tac.Locals`
   , "analyses/available/Available.gsl"
   , "analyses/availdefs/AvailDefs.gsl"

@@ -85,6 +85,22 @@ def Binop.denote : Binop → Val → Val → Option Val
   | ltu, a, b => some (Val.ofBool (a.toBitVec.ult b.toBitVec))
   | leu, a, b => some (Val.ofBool (a.toBitVec.ule b.toBitVec))
 
+/-- **Totality of an operator** — `true` when `denote op` never returns `none`, i.e. the operator
+    cannot fault. Kept **immediately beside `denote`** so the operator table stays the single place that
+    mentions individual operators: adding an operator extends `denote` and this table together, and
+    `denote_isSome_of_isTotal` right below is the one proof that ties them, discharged by `cases`. -/
+def Binop.isTotal : Binop → Bool
+  | div | mod => false          -- fault on a zero divisor
+  | _         => true
+
+/-- A **total** operator always denotes. The single link between `isTotal` and `denote`. -/
+theorem Binop.denote_isSome_of_isTotal {op : Binop} (h : op.isTotal = true) (a b : Val) :
+    ∃ v, op.denote a b = some v := by
+  cases op with
+  | div => simp [Binop.isTotal] at h
+  | mod => simp [Binop.isTotal] at h
+  | _ => exact ⟨_, rfl⟩
+
 /-- Right-hand side of an assignment, in three-address form: at most one operator over its
     atom operands. A bare `atom` covers copies (`x := y`) and constant loads (`x := 5`). -/
 inductive Expr where
@@ -92,6 +108,18 @@ inductive Expr where
   | una  (op : Unop)  (a   : Atom)
   | bin  (op : Binop) (a b : Atom)
   deriving DecidableEq, Repr, Inhabited
+
+/-- **Fault-freedom of an expression** — `true` when `e` evaluates in *every* store (`Semantics.
+    eval_isSome_of_faultFree`). Since `atom`/`una` are total by construction, this is exactly totality
+    of the top-level binary operator. Purely syntactic and decidable, so it can gate a transformation at
+    compile time.
+
+    This is what LCM's divergence-preserving mode hoists: an inserted `t := e` with `e.faultFree` cannot
+    turn a divergent run into a fault. See `BaseLanguage/LCM/Divergence.lean`. -/
+def Expr.faultFree : Expr → Bool
+  | .atom _     => true
+  | .una _ _    => true
+  | .bin op _ _ => op.isTotal
 
 /-- Commands. Each occupies one node; every non-`halt` command names its successor
     node(s) explicitly (RTL-style). `noop next` is an unconditional transfer (subsumes the
@@ -253,6 +281,19 @@ def eval (σ : Store) : Expr → Option Val
   | .atom a     => some (evalAtom σ a)
   | .una op a   => some (op.denote (evalAtom σ a))
   | .bin op a b => op.denote (evalAtom σ a) (evalAtom σ b)
+
+/-- **A fault-free expression always evaluates.** The semantic content of `Expr.faultFree`. -/
+theorem eval_isSome_of_faultFree {σ : Store} {e : Expr} (h : e.faultFree = true) :
+    ∃ v, eval σ e = some v := by
+  cases e with
+  | atom a  => exact ⟨_, rfl⟩
+  | una op a => exact ⟨_, rfl⟩
+  | bin op a b => exact op.denote_isSome_of_isTotal h _ _
+
+/-- A fault-free expression never faults (the `≠ none` form the block-execution lemmas consume). -/
+theorem eval_ne_none_of_faultFree {σ : Store} {e : Expr} (h : e.faultFree = true) :
+    eval σ e ≠ none := by
+  obtain ⟨v, hv⟩ := eval_isSome_of_faultFree (σ := σ) h; rw [hv]; exact Option.some_ne_none v
 
 /-- A machine configuration: the current node and the store. -/
 structure Config where
@@ -514,6 +555,46 @@ theorem steps_trans {P : Program} {a b c : Config} (h1 : Steps P a b) (h2 : Step
   induction h2 with
   | refl => exact h1
   | tail _ hstep ih => exact Steps.tail ih hstep
+
+/-! ### `StepsPlus` — the **non-stuttering** (≥ 1 step) closure
+
+`Steps` admits the empty run, which is fatal for divergence preservation: an infinite source run may
+not collapse to a finite target run, so each source step must be matched by **at least one** target
+step (`Behavior.Outcomes.StepSimG`). `StepsPlus` is the leading-`Step`-then-`Steps` shape that engine
+consumes. It is not derivable after the fact from `Steps P a c` — a self-looping source node has
+`a = c` with a genuine one-step target run — so the block-execution lemmas produce it directly. -/
+
+/-- **One or more steps**: a leading `Step` followed by a `Steps` tail. -/
+def StepsPlus (P : Program) (a c : Config) : Prop := ∃ mid, Step P a mid ∧ Steps P mid c
+
+/-- Forget the non-stuttering guarantee. -/
+theorem StepsPlus.toSteps {P : Program} {a c : Config} (h : StepsPlus P a c) : Steps P a c := by
+  obtain ⟨mid, hstep, hsteps⟩ := h
+  induction hsteps with
+  | refl => exact Steps.tail Steps.refl hstep
+  | tail _ hs ih => exact Steps.tail ih hs
+
+/-- A single step is a `StepsPlus`. -/
+theorem StepsPlus.single {P : Program} {a c : Config} (h : Step P a c) : StepsPlus P a c :=
+  ⟨c, h, Steps.refl⟩
+
+/-- Build from a leading step and a tail. -/
+theorem StepsPlus.of_step_steps {P : Program} {a b c : Config}
+    (h1 : Step P a b) (h2 : Steps P b c) : StepsPlus P a c := ⟨b, h1, h2⟩
+
+/-- A (possibly empty) prefix followed by a non-empty run is non-empty. -/
+theorem steps_trans_plus {P : Program} {a b c : Config}
+    (h1 : Steps P a b) (h2 : StepsPlus P b c) : StepsPlus P a c := by
+  revert h2
+  induction h1 with
+  | refl => exact id
+  | tail _ hstep ih => exact fun h2 => ih ⟨_, hstep, h2.toSteps⟩
+
+/-- A non-empty run followed by a (possibly empty) suffix is non-empty. -/
+theorem stepsPlus_trans {P : Program} {a b c : Config}
+    (h1 : StepsPlus P a b) (h2 : Steps P b c) : StepsPlus P a c := by
+  obtain ⟨mid, hstep, hsteps⟩ := h1
+  exact ⟨mid, hstep, steps_trans hsteps h2⟩
 
 /-- `run` splits additively: if `a` fuel leaves the machine still running at `c'`, then `a + b` fuel is
     `b` fuel from `c'`. (`b` is explicit so `rw [run_add h]` unifies it from the goal.) -/

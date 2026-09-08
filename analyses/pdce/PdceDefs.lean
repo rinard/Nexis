@@ -45,6 +45,16 @@ def rhsVars (n : Node) : Variables :=
   | some (Cmd.assign _ _ _) => usedVars P n
   | _                       => ∅
 
+-- define: faultingRhsVars (n) : Variables — the operands of a node whose assignment CAN FAULT.
+-- A computation that may fault is *observable*: whether it raises is part of the program's behavior,
+-- so its operands must be live even when its result is dead. Faint liveness (`rhsVars … when def meets
+-- live'`) deliberately does not see that; this node-local is what an unguarded floor clause adds on top,
+-- and it is the whole difference between the classical PDCE analysis and the fault-preserving one.
+def faultingRhsVars (n : Node) : Variables :=
+  match cmd n with
+  | some (Cmd.assign _ e _) => if e.faultFree then ∅ else usedVars P n
+  | _                       => ∅
+
 def defVars (n : Node) : Variables :=
   match defV P n with | some x => Variables.singleton x | none => Variables.empty
 
@@ -53,6 +63,12 @@ def condVars (n : Node) : Variables :=
   match cmd n with
   | some (Cmd.ifz _ _ _) => usedVars P n
   | _                    => ∅
+
+-- define: liveFloorF (n) : Variables := condVars(n) ∪ faultingRhsVars(n)
+-- The fault-preserving analysis's floor: the classical `condVars` floor WIDENED with the operands of a
+-- possibly-faulting assignment. A single node-local because a ghost carries exactly one floor.
+def liveFloorF (n : Node) : Variables := (condVars P n).union (faultingRhsVars P n)
+
 
 def kills (n : Node) (a : Asgn) : Bool :=
   (useV P n).contains a.lhs || (defV P n == some a.lhs)

@@ -89,33 +89,42 @@ private theorem key_ballot :
 /-- **The prefix-majorization induction (two-sided potential).** Carries the two-program comparison over
     an arbitrary start `c` with a *mixed* pending potential — `S'`'s in-flight-live on the left, `S`'s on
     the right (both gated by `S'.π`). The potential vanishes at `entry` (`sinkSeed = ∅`) and closes
-    per-step from `sink_maximal` (`S'.η ⊆ S.η`) + `live_minimal` (`S.π ⊆ S'.π`) via the
+    per-step from `sink_maximal` (`S'.ηK ⊆ S.ηK`) + `live_minimal` (`S.π ⊆ S'.π`) via the
     reflected ballot lemma `key_ballot`. -/
-theorem matCount_le_any_aux {P : Program} (S S' : PdceSpec P) (hS : Extremal S) (a : Asgn) :
+theorem matCount_le_any_aux {P : Program} (S S' : PdceSpec P) (hS : Extremal S)
+    (hkq : S'.keep = S.keep) (a : Asgn) (hk : S.keep a = true) :
     ∀ (fuel : Nat) (c : Config),
-      matCount P S a c fuel + (if a ∈ S'.η c.node ∧ a.lhs ∈ S'.π c.node then 1 else 0)
-        ≤ matCount P S' a c fuel + (if a ∈ S.η c.node ∧ a.lhs ∈ S'.π c.node then 1 else 0) := by
+      matCount P S a c fuel + (if a ∈ S'.ηK c.node ∧ a.lhs ∈ S'.π c.node then 1 else 0)
+        ≤ matCount P S' a c fuel + (if a ∈ S.ηK c.node ∧ a.lhs ∈ S'.π c.node then 1 else 0) := by
   intro fuel
   induction fuel with
   | zero =>
       intro c
-      have hE : a ∈ S'.η c.node → a ∈ S.η c.node := fun h => hS.η S'.η S'.isSink c.node a h
+      have hE : a ∈ S'.ηK c.node → a ∈ S.ηK c.node := fun h => mem_ηK.mpr ⟨hS.η S'.ηK (isSink_ηK S') c.node a h, hkq ▸ (mem_ηK.mp h).2⟩
       simp only [matCount]
-      by_cases h1 : a ∈ S'.η c.node <;> by_cases h2 : a ∈ S.η c.node <;>
+      by_cases h1 : a ∈ S'.ηK c.node <;> by_cases h2 : a ∈ S.ηK c.node <;>
         by_cases h3 : a.lhs ∈ S'.π c.node <;> simp_all
   | succ f ih =>
       intro c
       cases hs : step1 P c with
       | next c' =>
           have hStep : Step P c c' := step1_next_iff.mp hs
-          have hsE  : a ∈ S'.η c.node  → a ∈ S.η c.node  := fun h => hS.η S'.η S'.isSink c.node  a h
-          have hsE' : a ∈ S'.η c'.node → a ∈ S.η c'.node := fun h => hS.η S'.η S'.isSink c'.node a h
+          have hsE  : a ∈ S'.ηK c.node  → a ∈ S.ηK c.node  := fun h => mem_ηK.mpr ⟨hS.η S'.ηK (isSink_ηK S') c.node  a h, hkq ▸ (mem_ηK.mp h).2⟩
+          have hsE' : a ∈ S'.ηK c'.node → a ∈ S.ηK c'.node := fun h => mem_ηK.mpr ⟨hS.η S'.ηK (isSink_ηK S') c'.node a h, hkq ▸ (mem_ηK.mp h).2⟩
           have hlE  : a.lhs ∈ S.π c.node  → a.lhs ∈ S'.π c.node  := fun h => hS.π S'.π S'.isLive c.node  a.lhs h
           have hlE' : a.lhs ∈ S.π c'.node → a.lhs ∈ S'.π c'.node := fun h => hS.π S'.π S'.isLive c'.node a.lhs h
-          have hUS  : a ∈ S.η c'.node  → a ∈ born P c.node ∨ (a ∈ S.η c.node  ∧ a ∈ pass P c.node) := by
-            intro h; have := S.isSink.update  c c' hStep a h; rwa [Assignments.mem_union, Assignments.mem_inter] at this
-          have hUS' : a ∈ S'.η c'.node → a ∈ born P c.node ∨ (a ∈ S'.η c.node ∧ a ∈ pass P c.node) := by
-            intro h; have := S'.isSink.update c c' hStep a h; rwa [Assignments.mem_union, Assignments.mem_inter] at this
+          have hUS  : a ∈ S.ηK c'.node  → a ∈ born P c.node ∨ (a ∈ S.ηK c.node  ∧ a ∈ pass P c.node) := by
+            intro h
+            have hk := (mem_ηK.mp h).2
+            have hu := S.isSink.update  c c' hStep a (ηK_sub S _ a h)
+            rw [Assignments.mem_union, Assignments.mem_inter] at hu
+            exact hu.imp id (fun hh => ⟨mem_ηK.mpr ⟨hh.1, hk⟩, hh.2⟩)
+          have hUS' : a ∈ S'.ηK c'.node → a ∈ born P c.node ∨ (a ∈ S'.ηK c.node ∧ a ∈ pass P c.node) := by
+            intro h
+            have hk := (mem_ηK.mp h).2
+            have hu := S'.isSink.update c c' hStep a (ηK_sub S' _ a h)
+            rw [Assignments.mem_union, Assignments.mem_inter] at hu
+            exact hu.imp id (fun hh => ⟨mem_ηK.mpr ⟨hh.1, hk⟩, hh.2⟩)
           have hCS  : a ∈ pass P c.node → a.lhs ∈ S.π c'.node  → a.lhs ∈ S.π c.node  :=
             fun hp hl => pass_live_carry S  hStep hp hl
           have hCS' : a ∈ pass P c.node → a.lhs ∈ S'.π c'.node → a.lhs ∈ S'.π c.node :=
@@ -136,16 +145,21 @@ theorem matCount_le_any_aux {P : Program} (S S' : PdceSpec P) (hS : Extremal S) 
             rw [hbeq]; intro h; exact (Assignments.mem_sdiff.mp h).2
           rw [matCount_next hs, matCount_next hs]
           have IH := ih c'
-          have eMNS  : a ∈ matNode P S  c.node ↔ a ∈ S.η c.node  ∧ a ∈ blockedSet P c.node ∧ a.lhs ∈ S.π c.node  := mem_matNode
-          have eMNS' : a ∈ matNode P S' c.node ↔ a ∈ S'.η c.node ∧ a ∈ blockedSet P c.node ∧ a.lhs ∈ S'.π c.node := mem_matNode
-          have eMES  : a ∈ matEdge P S  c.node c'.node ↔ (a ∈ born P c.node ∨ (a ∈ S.η c.node  ∧ a ∈ pass P c.node)) ∧ a ∉ S.η c'.node  ∧ a.lhs ∈ S.π c'.node  := by
+          have eMNS  : a ∈ matNode P S  c.node ↔ a ∈ S.ηK c.node  ∧ a ∈ blockedSet P c.node ∧ a.lhs ∈ S.π c.node  := mem_matNode
+          have eMNS' : a ∈ matNode P S' c.node ↔ a ∈ S'.ηK c.node ∧ a ∈ blockedSet P c.node ∧ a.lhs ∈ S'.π c.node := mem_matNode
+          have eMES  : a ∈ matEdge P S  c.node c'.node ↔ (a ∈ born P c.node ∨ (a ∈ S.ηK c.node  ∧ a ∈ pass P c.node)) ∧ a ∉ S.ηK c'.node  ∧ a.lhs ∈ S.π c'.node  := by
             rw [mem_matEdge, mem_delayedExit]
-          have eMES' : a ∈ matEdge P S' c.node c'.node ↔ (a ∈ born P c.node ∨ (a ∈ S'.η c.node ∧ a ∈ pass P c.node)) ∧ a ∉ S'.η c'.node ∧ a.lhs ∈ S'.π c'.node := by
+            exact ⟨fun h => ⟨h.1, h.2.1, keep_live_of_matEdge hk h.2.2⟩,
+                   fun h => ⟨h.1, h.2.1, Or.inl h.2.2⟩⟩
+          have hk' : S'.keep a = true := by rw [hkq]; exact hk
+          have eMES' : a ∈ matEdge P S' c.node c'.node ↔ (a ∈ born P c.node ∨ (a ∈ S'.ηK c.node ∧ a ∈ pass P c.node)) ∧ a ∉ S'.ηK c'.node ∧ a.lhs ∈ S'.π c'.node := by
             rw [mem_matEdge, mem_delayedExit]
+            exact ⟨fun h => ⟨h.1, h.2.1, keep_live_of_matEdge hk' h.2.2⟩,
+                   fun h => ⟨h.1, h.2.1, Or.inl h.2.2⟩⟩
           have hd : ∀ (Q : Prop) [Decidable Q], (if Q then (1:Nat) else 0) = (decide Q).toNat := by
             intro Q _; by_cases hQ : Q <;> simp [hQ]
-          have K := key_ballot (decide (a ∈ S.η c.node)) (decide (a ∈ S.η c'.node))
-            (decide (a ∈ S'.η c.node)) (decide (a ∈ S'.η c'.node))
+          have K := key_ballot (decide (a ∈ S.ηK c.node)) (decide (a ∈ S.ηK c'.node))
+            (decide (a ∈ S'.ηK c.node)) (decide (a ∈ S'.ηK c'.node))
             (decide (a.lhs ∈ S.π c.node)) (decide (a.lhs ∈ S.π c'.node))
             (decide (a.lhs ∈ S'.π c.node)) (decide (a.lhs ∈ S'.π c'.node))
             (decide (a ∈ born P c.node)) (decide (a ∈ pass P c.node)) (decide (a ∈ blockedSet P c.node))
@@ -156,35 +170,35 @@ theorem matCount_le_any_aux {P : Program} (S S' : PdceSpec P) (hS : Extremal S) 
             decide_not, Bool.and_assoc] at K IH ⊢
           omega
       | halt =>
-          have hsE : a ∈ S'.η c.node → a ∈ S.η c.node := fun h => hS.η S'.η S'.isSink c.node a h
+          have hsE : a ∈ S'.ηK c.node → a ∈ S.ηK c.node := fun h => mem_ηK.mpr ⟨hS.η S'.ηK (isSink_ηK S') c.node a h, hkq ▸ (mem_ηK.mp h).2⟩
           have hlE : a.lhs ∈ S.π c.node → a.lhs ∈ S'.π c.node := fun h => hS.π S'.π S'.isLive c.node a.lhs h
           simp only [matCount, hs, mem_matNode]
-          by_cases h1 : a ∈ S.η c.node <;> by_cases h2 : a ∈ S'.η c.node <;>
+          by_cases h1 : a ∈ S.ηK c.node <;> by_cases h2 : a ∈ S'.ηK c.node <;>
           by_cases h3 : a.lhs ∈ S.π c.node <;> by_cases h4 : a.lhs ∈ S'.π c.node <;>
           by_cases h5 : a ∈ blockedSet P c.node <;> simp_all <;> omega
       | fault =>
-          have hsE : a ∈ S'.η c.node → a ∈ S.η c.node := fun h => hS.η S'.η S'.isSink c.node a h
+          have hsE : a ∈ S'.ηK c.node → a ∈ S.ηK c.node := fun h => mem_ηK.mpr ⟨hS.η S'.ηK (isSink_ηK S') c.node a h, hkq ▸ (mem_ηK.mp h).2⟩
           have hlE : a.lhs ∈ S.π c.node → a.lhs ∈ S'.π c.node := fun h => hS.π S'.π S'.isLive c.node a.lhs h
           simp only [matCount, hs, mem_matNode]
-          by_cases h1 : a ∈ S.η c.node <;> by_cases h2 : a ∈ S'.η c.node <;>
+          by_cases h1 : a ∈ S.ηK c.node <;> by_cases h2 : a ∈ S'.ηK c.node <;>
           by_cases h3 : a.lhs ∈ S.π c.node <;> by_cases h4 : a.lhs ∈ S'.π c.node <;>
           by_cases h5 : a ∈ blockedSet P c.node <;> simp_all <;> omega
       | stuck =>
-          have hsE : a ∈ S'.η c.node → a ∈ S.η c.node := fun h => hS.η S'.η S'.isSink c.node a h
+          have hsE : a ∈ S'.ηK c.node → a ∈ S.ηK c.node := fun h => mem_ηK.mpr ⟨hS.η S'.ηK (isSink_ηK S') c.node a h, hkq ▸ (mem_ηK.mp h).2⟩
           have hlE : a.lhs ∈ S.π c.node → a.lhs ∈ S'.π c.node := fun h => hS.π S'.π S'.isLive c.node a.lhs h
           simp only [matCount, hs, mem_matNode]
-          by_cases h1 : a ∈ S.η c.node <;> by_cases h2 : a ∈ S'.η c.node <;>
+          by_cases h1 : a ∈ S.ηK c.node <;> by_cases h2 : a ∈ S'.ηK c.node <;>
           by_cases h3 : a.lhs ∈ S.π c.node <;> by_cases h4 : a.lhs ∈ S'.π c.node <;>
           by_cases h5 : a ∈ blockedSet P c.node <;> simp_all <;> omega
 
 theorem matCount_le_any {P : Program} (S S' : PdceSpec P) (hS : Extremal S)
-    (a : Asgn) (σ : Store) (ks : Nat) :
+    (hkq : S'.keep = S.keep) (a : Asgn) (hk : S.keep a = true) (σ : Store) (ks : Nat) :
     matCount P S a ⟨P.entry, σ⟩ ks ≤ matCount P S' a ⟨P.entry, σ⟩ ks := by
-  have h := matCount_le_any_aux S S' hS a ks ⟨P.entry, σ⟩
-  have hS0  : a ∉ S.η  P.entry := by
-    intro hmem; have := S.isSink.seed  a hmem; simp [sinkSeed, Assignments.empty] at this
-  have hS0' : a ∉ S'.η P.entry := by
-    intro hmem; have := S'.isSink.seed a hmem; simp [sinkSeed, Assignments.empty] at this
+  have h := matCount_le_any_aux S S' hS hkq a hk ks ⟨P.entry, σ⟩
+  have hS0  : a ∉ S.ηK  P.entry := by
+    intro hmem; have := S.isSink.seed  a (ηK_sub S _ a hmem); simp [sinkSeed, Assignments.empty] at this
+  have hS0' : a ∉ S'.ηK P.entry := by
+    intro hmem; have := S'.isSink.seed a (ηK_sub S' _ a hmem); simp [sinkSeed, Assignments.empty] at this
   simp only [show (⟨P.entry, σ⟩ : Config).node = P.entry from rfl] at h
   simp only [hS0, hS0', false_and, if_false] at h
   simpa using h
@@ -192,11 +206,12 @@ theorem matCount_le_any {P : Program} (S S' : PdceSpec P) (hS : Extremal S)
 /-- **Two-program execution-count optimality, all prefixes.** Running BOTH compiled programs for the
     same `ks` original steps, the extremal transform executes `a` no more often than the competitor. -/
 theorem transform_execCountOrig_le_any {P : Program} (S S' : PdceSpec P) (hS : Extremal S)
-    (wf : WellFormed P) (a : Asgn) (σ : Store) (ks : Nat) :
+    (wf : WellFormed P) (hkq : S'.keep = S.keep) (a : Asgn) (hk : S.keep a = true)
+    (σ : Store) (ks : Nat) :
     execCountOrig P S  a ⟨P.entry, σ⟩ ⟨blockOff P S  P.entry, σ⟩ ks
       ≤ execCountOrig P S' a ⟨P.entry, σ⟩ ⟨blockOff P S' P.entry, σ⟩ ks := by
   rw [execCountOrig_eq_matCount S  wf a ks wf.entry_lt (match_init S  σ),
       execCountOrig_eq_matCount S' wf a ks wf.entry_lt (match_init S' σ)]
-  exact matCount_le_any S S' hS a σ ks
+  exact matCount_le_any S S' hS hkq a hk σ ks
 
 end BaseLanguage.Analyses.PDCE

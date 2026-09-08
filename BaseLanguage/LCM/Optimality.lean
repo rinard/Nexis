@@ -74,7 +74,7 @@ theorem placement_within_postp {P : Program} (S : LcmSpec P) {n : Node} {e : Exp
 /-- Every **entry**-materialized temp is used downstream (`∈ usedOut`) — no dead computation. -/
 theorem insertBefore_nonisolated {P : Program} {S : LcmSpec P} {n : Node} {e : Expr}
     (he : e ∈ (insertBefore P S n).toList) : e ∈ S.τᵤ n :=
-  (mem_insertBefore.mp he).2
+  τᵤK_sub S n e (mem_insertBefore.mp he).2
 
 /-- Every **exit**-materialized temp is used downstream (`∈ usedOut`) — no dead computation. -/
 theorem insertAfter_nonisolated {P : Program} {S : LcmSpec P} {i : Node} {e : Expr}
@@ -84,8 +84,8 @@ theorem insertAfter_nonisolated {P : Program} {S : LcmSpec P} {i : Node} {e : Ex
   | none => rw [hf] at he; exact absurd he Std.HashSet.not_mem_empty
   | some instr =>
       cases instr with
-      | assign x e0 next => rw [hf, Assignments.mem_inter] at he; exact he.2
-      | noop next => rw [hf, Assignments.mem_inter] at he; exact he.2
+      | assign x e0 next => rw [hf, Assignments.mem_inter] at he; exact τᵤK_sub S i e he.2
+      | noop next => rw [hf, Assignments.mem_inter] at he; exact τᵤK_sub S i e he.2
       | ifz x z nz => rw [hf] at he; exact absurd he Std.HashSet.not_mem_empty
       | halt => rw [hf] at he; exact absurd he Std.HashSet.not_mem_empty
 

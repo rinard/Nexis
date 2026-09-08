@@ -238,7 +238,7 @@ theorem match_step_ifz_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn
         · rw [hsu]; exact Step.ifzT hf hx0
         · rw [hsu]; exact Step.ifzF hf hxne
       obtain ⟨d', hsteps, hmatch⟩ := match_step_ifz S hf hcond hagree hHolds hMsub hpa hnfσ hnfe
-      refine Or.inr ⟨d', hsteps, hmatch, ?_⟩
+      refine Or.inr ⟨d', hsteps.toSteps, hmatch, ?_⟩
       show Cov S (⟨succ, σ⟩ : Config).node
         (Mstep_edge S (⟨nd, σ⟩ : Config).node (⟨succ, σ⟩ : Config).node M)
       exact Cov_step_edge S hS wn hstepsrc hcov
@@ -305,7 +305,7 @@ theorem match_step_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : W
               have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by simpa using hg
               exact replace_covered S wn hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
             hnfσ hnfeσ
-        exact Or.inr ⟨d', hsteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
+        exact Or.inr ⟨d', hsteps.toSteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
           (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inr ⟨x, e0, hf⟩)]; exact he))),
           Cov_step_edge S hS wn (Step.assign hf hvv) hcov⟩
   | @noop nd σ next hf =>
@@ -335,7 +335,7 @@ theorem match_step_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : W
       · have hnfeσ : ∀ e ∈ (insertAfter P S nd).toList, eval σ e ≠ none :=
           fun e he hev => hX ⟨e, he, hev⟩
         obtain ⟨d', hsteps, hmatch⟩ := match_step_noop S hf hagree hHolds hMsub hpa hnfσ hnfeσ
-        exact Or.inr ⟨d', hsteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
+        exact Or.inr ⟨d', hsteps.toSteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
           (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inl hf)]; exact he))),
           Cov_step_edge S hS wn (Step.noop hf) hcov⟩
   | @ifzT nd σ x z nz hf hcond =>
@@ -374,7 +374,7 @@ theorem transform_preserves_faulting {P : Program} (S : LcmSpec P) (hS : Extrema
   have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
     intro e he
     rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd he.1.1 (used_entry_empty S hS wn hen e)
+    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
   exact sim_fault S hS wn (steps_toH hrun) hflt (match_init S σ) (postpSubAnti_entry S) hcov
 
 

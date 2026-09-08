@@ -29,7 +29,7 @@ set_option linter.unusedVariables false
     value**. Rides on the forward simulation (`match_steps`) + the store-agreement `Match` clause. -/
 theorem transform_holds_regOcc {P : Program} (S : PdceSpec P) (wf : WellFormed P) {σ : Store}
     {c : Config} (x : Var) (hreach : Steps P ⟨P.entry, σ⟩ c)
-    (hocc : regOcc S.π S.η x c.node = true) :
+    (hocc : regOcc S.π S.ηK x c.node = true) :
     ∃ τ, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ ⟨blockOff P S c.node, τ⟩
          ∧ τ x = c.store x := by
   obtain ⟨d, hsteps, hm⟩ := match_steps S wf (match_init S σ) hreach
@@ -61,10 +61,10 @@ only things two valid analyses reorder, and they are precisely what this measure
     register occupancy" below for the corrected measure, the explicit `NoMovedRead` hypothesis under which
     this measure *is* the live range, and the mechanized counterexample where it is not. -/
 theorem transform_regPressure_le {P : Program} {S : PdceSpec P} (hS : Extremal S) (S' : PdceSpec P)
-    (x : Var) (c : Config) (ks : Nat) :
+    (hkq : S'.keep = S.keep) (x : Var) (c : Config) (ks : Nat) :
     pathVarLiveRange S x (runNodes P c ks)
       ≤ pathVarLiveRange S' x (runNodes P c ks) :=
-  pathVarLiveRange_le hS S' x (runNodes P c ks)
+  pathVarLiveRange_le hS S' hkq x (runNodes P c ks)
 
 /-! ## Honest register occupancy — `regOcc` undercounts moved reads; the hypothesis that fixes it
 
@@ -95,7 +95,7 @@ def regOccExt (live : Node → Variables) (sink : Node → Assignments) (x : Var
 
 /-- Per-path honest occupancy length. -/
 def pathVarLiveRangeExt {P : Program} (S : PdceSpec P) (x : Var) (path : List Node) : Nat :=
-  (path.filter (regOccExt S.π S.η x)).length
+  (path.filter (regOccExt S.π S.ηK x)).length
 
 /-- **The missing hypothesis: no read of `x` moves** — no in-flight assignment reads `x`, i.e. `x` is never
     carried downstream as a sunk assignment's operand. On the extremal `S` (greatest sink) this is the
@@ -103,13 +103,13 @@ def pathVarLiveRangeExt {P : Program} (S : PdceSpec P) (x : Var) (path : List No
     counterexample above (`⟨b,a+1⟩` reads `a`), and holds for any `x` read only by non-sunk instructions
     (e.g. branch conditions). -/
 def NoMovedRead {P : Program} (S : PdceSpec P) (x : Var) : Prop :=
-  ∀ n a, a ∈ S.η n → exprReadsVar a.rhs x = false
+  ∀ n a, a ∈ S.ηK n → exprReadsVar a.rhs x = false
 
 /-- Under `NoMovedRead`, the operand-hold term is vacuous, so honest occupancy IS `regOcc`. -/
 theorem regOccExt_eq_regOcc {P : Program} {S : PdceSpec P} {x : Var}
     (h : NoMovedRead S x) (n : Node) :
-    regOccExt S.π S.η x n = regOcc S.π S.η x n := by
-  have hheld : heldForInFlight S.π S.η x n = false := by
+    regOccExt S.π S.ηK x n = regOcc S.π S.ηK x n := by
+  have hheld : heldForInFlight S.π S.ηK x n = false := by
     unfold heldForInFlight
     rw [List.any_eq_false]
     intro a ha
@@ -124,7 +124,8 @@ theorem regOccExt_eq_regOcc {P : Program} {S : PdceSpec P} {x : Var}
     made explicit. Chain: `honest(S) = regOcc(S)` (the hypothesis cancels the operand-hold term)
     `≤ regOcc(S')` (`pathVarLiveRange_le`) `≤ honest(S')` (`regOcc` is a disjunct). -/
 theorem transform_honestLiveRange_le {P : Program} {S : PdceSpec P} (hS : Extremal S)
-    (S' : PdceSpec P) (x : Var) (h : NoMovedRead S x) (path : List Node) :
+    (S' : PdceSpec P) (hkq : S'.keep = S.keep) (x : Var) (h : NoMovedRead S x)
+    (path : List Node) :
     pathVarLiveRangeExt S x path ≤ pathVarLiveRangeExt S' x path := by
   have e1 : pathVarLiveRangeExt S x path = pathVarLiveRange S x path := by
     unfold pathVarLiveRangeExt pathVarLiveRange
@@ -133,7 +134,7 @@ theorem transform_honestLiveRange_le {P : Program} {S : PdceSpec P} (hS : Extrem
     length_filter_mono (fun n hn => by simp only [regOccExt, hn, Bool.true_or]) path
   calc pathVarLiveRangeExt S x path
       = pathVarLiveRange S x path := e1
-    _ ≤ pathVarLiveRange S' x path := pathVarLiveRange_le hS S' x path
+    _ ≤ pathVarLiveRange S' x path := pathVarLiveRange_le hS S' hkq x path
     _ ≤ pathVarLiveRangeExt S' x path := step2
 
 /-- **Necessity of `NoMovedRead` (why the hypothesis is not free).** `regOcc` alone can be strictly below the
@@ -143,8 +144,8 @@ theorem transform_honestLiveRange_le {P : Program} {S : PdceSpec P} (hS : Extrem
     (`pathVarLiveRange S a = 0` while `a` is genuinely held); this is the pointwise reason the plain measure
     is not a live range without the hypothesis. -/
 theorem regOccExt_gt_regOcc_of_movedRead {P : Program} {S : PdceSpec P} {x : Var} {n : Node}
-    (hheld : heldForInFlight S.π S.η x n = true) (hnocc : regOcc S.π S.η x n = false) :
-    regOccExt S.π S.η x n = true ∧ regOcc S.π S.η x n = false :=
+    (hheld : heldForInFlight S.π S.ηK x n = true) (hnocc : regOcc S.π S.ηK x n = false) :
+    regOccExt S.π S.ηK x n = true ∧ regOcc S.π S.ηK x n = false :=
   ⟨by simp only [regOccExt, hheld, Bool.or_true, hnocc], hnocc⟩
 
 /-! ## Operational realization of the operand-hold term — `Match` clause 3
@@ -157,13 +158,13 @@ be `live`, so no `Match` clause tracks it directly) but **"the transformed store
 which reads `x`** — so `x`'s contribution is present. -/
 
 /-- **The in-flight assignment is recoverable in the transformed store (clause 3, lifted).** At every
-    reachable source config `c`, for each **live** in-flight `a ∈ S.η c.node` (`a.lhs ∈ S.π c.node`),
+    reachable source config `c`, for each **live** in-flight `a ∈ S.ηK c.node` (`a.lhs ∈ S.π c.node`),
     the transform reaches the block head with `eval τ a.rhs = some (c.store a.lhs)`: the deferred computation
     is recomputable there. Rides on the forward simulation (`match_steps`) + `Match` clause 3, exactly as
     `transform_holds_regOcc` rides on clause 2. -/
 theorem transform_recovers_inFlight {P : Program} (S : PdceSpec P) (wf : WellFormed P) {σ : Store}
     {c : Config} {a : Asgn} (hreach : Steps P ⟨P.entry, σ⟩ c)
-    (hmem : a ∈ S.η c.node) (hlive : a.lhs ∈ S.π c.node) :
+    (hmem : a ∈ S.ηK c.node) (hlive : a.lhs ∈ S.π c.node) :
     ∃ τ, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ ⟨blockOff P S c.node, τ⟩
          ∧ eval τ a.rhs = some (c.store a.lhs) := by
   obtain ⟨d, hsteps, hm⟩ := match_steps S wf (match_init S σ) hreach
@@ -174,8 +175,8 @@ theorem transform_recovers_inFlight {P : Program} (S : PdceSpec P) (wf : WellFor
 
 /-- `heldForInFlight` gives back a concrete witness: a live in-flight assignment whose rhs reads `x`. -/
 theorem heldForInFlight_witness {P : Program} {S : PdceSpec P} {x : Var} {n : Node}
-    (h : heldForInFlight S.π S.η x n = true) :
-    ∃ a : Asgn, a ∈ S.η n ∧ exprReadsVar a.rhs x = true ∧ a.lhs ∈ S.π n := by
+    (h : heldForInFlight S.π S.ηK x n = true) :
+    ∃ a : Asgn, a ∈ S.ηK n ∧ exprReadsVar a.rhs x = true ∧ a.lhs ∈ S.π n := by
   unfold heldForInFlight at h
   rw [List.any_eq_true] at h
   obtain ⟨a, ha, hp⟩ := h
@@ -191,8 +192,8 @@ theorem heldForInFlight_witness {P : Program} {S : PdceSpec P} {x : Var} {n : No
     (the `regOcc` disjunct), **`regOccExt` is fully operationally realized.** -/
 theorem transform_holds_heldForInFlight {P : Program} (S : PdceSpec P) (wf : WellFormed P) {σ : Store}
     {c : Config} {x : Var} (hreach : Steps P ⟨P.entry, σ⟩ c)
-    (hheld : heldForInFlight S.π S.η x c.node = true) :
-    ∃ (a : Asgn) (τ : Store), a ∈ S.η c.node ∧ exprReadsVar a.rhs x = true
+    (hheld : heldForInFlight S.π S.ηK x c.node = true) :
+    ∃ (a : Asgn) (τ : Store), a ∈ S.ηK c.node ∧ exprReadsVar a.rhs x = true
       ∧ Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ ⟨blockOff P S c.node, τ⟩
       ∧ eval τ a.rhs = some (c.store a.lhs) := by
   obtain ⟨a, hmem, hreads, hlive⟩ := heldForInFlight_witness hheld

@@ -30,7 +30,7 @@ open Tac Semantics Std
 
 /-- Candidates delayed **leaving** `n` — the `Sink.update` RHS, `born n ∪ (sink n ∩ pass n)`. -/
 def delayedExit (P : Program) (S : PdceSpec P) (n : Node) : Assignments :=
-  Assignments.union (born P n) (Assignments.inter (S.η n) (pass P n))
+  Assignments.union (born P n) (Assignments.inter (S.ηK n) (pass P n))
 
 /-- Candidates **blocked** at `n` (cannot be delayed past it): the non-transparent ones, and at a
     terminal `halt` *all* of them (the exit frontier). -/
@@ -41,12 +41,12 @@ def blockedSet (P : Program) (n : Node) : Assignments :=
 
 /-- Node-entry materializations before `n`: in flight, blocked, and live (lhs in `live n`). -/
 def matNode (P : Program) (S : PdceSpec P) (n : Node) : List Asgn :=
-  (liveFilter (Assignments.inter (S.η n) (blockedSet P n)) (S.π n)).toList
+  (liveFilter (Assignments.inter (S.ηK n) (blockedSet P n)) (S.π n)).toList
 
 /-- Edge materializations on `p → s`: delayed out of `p`, dropped by the merge at `s`, and live at `s`
     (lhs in `live s`). -/
 def matEdge (P : Program) (S : PdceSpec P) (p s : Node) : List Asgn :=
-  (liveFilter (Assignments.sdiff (delayedExit P S p) (S.η s)) (S.π s)).toList
+  (liveFilterK (Assignments.sdiff (delayedExit P S p) (S.ηK s)) (S.π s) S.keep).toList
 
 /-! ## Materialization chains (straight-line `assign` sequences) -/
 
