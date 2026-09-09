@@ -7,10 +7,10 @@
 > input is a **located error**, never a silent misclassify (the totality contract).
 >
 > **Matches `GenGeneral/Parser.lean`** (the two are the single source of truth for the surface):
-> the file-level `include DottedPath` directive and the `[Elem]` element-type annotation are grammar,
-> and two constraints are **hard errors** — a ghost block must be nested inside
+> the file-level `include DottedPath` directive and the `[ElemTy]` element-type annotation are grammar,
+> and three constraints are **hard errors** — a ghost block must be nested inside
 > an `analysis { … }` wrapper (no bare top-level ghosts), and a `∀` binder must be exactly `n` (per-config)
-> or `n → n'` (per-edge).
+> or `n → n'` (per-edge), and a ghost's domain must carry its `[ElemTy]` annotation.
 >
 > This grammar is frozen: it is exactly the MTC atoms + the ghost frame, **not** a general expression language.
 
@@ -39,11 +39,15 @@ Include      ::= "include" DottedPath             (* file-level node-local sourc
 DottedPath   ::= identifier { "." identifier }    (* e.g. Tac.Locals · analyses.lcm.LcmDefs *)
 Analysis     ::= "analysis" identifier "{" { GhostSpec } "}"
 
-GhostSpec    ::= Direction identifier Ghost ":" Family [ "[" Elem "]" ] "{" { Clause } "}"
+GhostSpec    ::= Direction identifier Ghost ":" Family "[" ElemTy "]" "{" { Clause } "}"
 Direction    ::= "history" | "prophecy"
 Ghost        ::= identifier                        (* carried variable; may be η/π/τ *)
 Family       ::= identifier                        (* domain, e.g. Assignments / Variables *)
-                                                   (* [Elem] = element-type annotation: Assignments[Expr] *)
+ElemTy       ::= identifier                        (* element TYPE of the domain: Assignments[Expr].
+                                                      REQUIRED — it is spliced into emitted identifiers
+                                                      (BV<ElemTy>, decF<ElemTy>), so a bare family is a
+                                                      located error, not a silent empty. Distinct from
+                                                      `Elem`, which names element *variables* z / y. *)
 
 Clause       ::= Propagation | Condition | Seed | Within
 

@@ -84,7 +84,8 @@ Include      ::= "include" DottedPath                (* file-level node-local so
 DottedPath   ::= identifier { "." identifier }       (* e.g. analyses.lcm.LcmDefs *)
 Analysis     ::= "analysis" identifier "{" { GhostSpec } "}"
 
-GhostSpec    ::= Direction identifier Ghost ":" Family "{" { Clause } "}"
+GhostSpec    ::= Direction identifier Ghost ":" Family "[" ElemTy "]" "{" { Clause } "}"
+                                                   (* the [ElemTy] annotation is REQUIRED *)
 Direction    ::= "history" | "prophecy"
 Ghost        ::= identifier                          (* the carried variable's name; may be η/π/τ (§ Notes) *)
 Family       ::= identifier

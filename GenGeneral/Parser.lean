@@ -340,10 +340,17 @@ def parseGhost : List Token → Res (GhostBlock × List Token)
       err dir.pos s!"expected 'history' or 'prophecy', found '{dir.text}'"
     else if colon.text != ":" then err colon.pos s!"expected ':', found '{colon.text}'"
     else
-      -- optional element-type annotation `[Elem]` right after the domain (`Assignments[Expr]`)
+      -- element-type annotation `[Elem]` right after the domain (`Assignments[Expr]`). REQUIRED: it is
+      -- spliced into emitted identifiers (`BV<elem>`, `decF<elem>`), so an absent or empty annotation
+      -- would emit unusable Lean rather than fail. Reject it here so the totality contract holds —
+      -- malformed input is a located error, never a silent misclassify.
       let (elem, rest1) := match rest0 with
         | lb :: e :: rb :: r => if lb.text == "[" && rb.text == "]" then (e.text, r) else ("", rest0)
         | _                  => ("", rest0)
+      if elem.isEmpty then
+        err dom.pos s!"ghost '{c.text}': domain '{dom.text}' needs an element-type annotation, \
+                       as in '{dom.text}[Expr]'"
+      else
       match rest1 with
       | brace :: rest =>
         if brace.text != "{" then err brace.pos s!"expected an opening brace, found '{brace.text}'"

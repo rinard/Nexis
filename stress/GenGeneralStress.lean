@@ -88,7 +88,8 @@ def corpus : List (String × Outcome) :=
     ("31-FwdFloor",        .lowers "FwdFloor·fwdMay"),        -- lone forward floor   ⇒ resFmC (ceiling = universe)
     ("32-FwdGuardClamp",   .rejects),                         -- forward guard + unguarded clamp ⇒ still rejected
     ("33-FwdMustFloor",    .lowers "FwdMustFloor·fwdMust"),   -- fwd·must + lone floor   ⇒ resFMC (ceiling = universe)
-    ("34-FwdMayCeil",      .lowers "FwdMayCeil·fwdMay") ]     -- fwd·may  + lone ceiling ⇒ resFmC (floor = ∅)
+    ("34-FwdMayCeil",      .lowers "FwdMayCeil·fwdMay"),     -- fwd·may  + lone ceiling ⇒ resFmC (floor = ∅)
+    ("35-BareFamily",      .parseFail) ]                     -- domain with no `[Elem]` ⇒ located error, not silent
 
 def runStress : IO UInt32 := do
   IO.println "== gengen-stress: the spiky stress corpus (regression gate) =="

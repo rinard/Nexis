@@ -1,0 +1,15 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 35-BareFamily.gsl — a ghost declared with NO element-type annotation on its domain.
+-- The annotation is spliced into emitted identifiers (`BV<elem>`, `decF<elem>`), so accepting a bare
+-- family would emit unusable Lean instead of failing. The totality contract requires a located error.
+-- EXPECTED: parseFail (rejected in the ghost header).
+
+include Tac.Locals
+
+analysis BareFamily {
+  history BareFamily h : Exprs {
+    update : ∀ n→n'. h(n') ⊆ genExprs(n) ∪ (h(n) ∩ transpExprs(n))
+    seed   : h(entry) ⊆ ∅
+    within : ∀ n. h(n) ⊆ allExprs
+  }
+}
