@@ -179,6 +179,42 @@ theorem evs_mem_congr (e : Node × Node) (t : MTC α) {X Y : Std.HashSet α} (h 
   | image U R => exact imageS_congr h
   | gather U sub => exact gatherS_congr h
 
+omit [LawfulHashable α] in
+/-- **Monotonicity of the term denotation.** `evs` is monotone in its set argument. The `MTC` grammar is
+    negation-free by construction — `diffc`'s subtrahend is a *constant*, never a term, so the ghost's own
+    value (`var`) occurs only positively — which is exactly the syntactic condition the specification
+    language enforces on a clause.
+
+    This is the missing half of the bridge from *extremality* to the transfer **equation**: a greatest
+    post-fixpoint of a monotone operator is a fixpoint, so the solver's extremal solution satisfies the
+    converse inclusion too (`Solver/Closure.lean`). -/
+theorem evs_mono (e : Node × Node) (t : MTC α) {X Y : Std.HashSet α} (h : SetOps.Subset X Y) :
+    SetOps.Subset (evs e t X) (evs e t Y) := by
+  induction t with
+  | var => exact h
+  | const f => intro z hz; exact hz
+  | union a b iha ihb =>
+      intro z hz
+      exact SetOps.mem_union.mpr ((SetOps.mem_union.mp hz).imp (iha z) (ihb z))
+  | inter a b iha ihb =>
+      intro z hz
+      exact SetOps.mem_inter.mpr ⟨iha z (SetOps.mem_inter.mp hz).1, ihb z (SetOps.mem_inter.mp hz).2⟩
+  | diffc a f iha =>
+      intro z hz
+      exact SetOps.mem_sdiff.mpr ⟨iha z (SetOps.mem_sdiff.mp hz).1, (SetOps.mem_sdiff.mp hz).2⟩
+  | gate sng res =>
+      intro z hz
+      cases hg : X.toList.any (fun y => (sng e).contains y) with
+      | false => rw [evs, hg] at hz; simp at hz
+      | true =>
+          obtain ⟨y, hy, hc⟩ := List.any_eq_true.mp hg
+          have hg' : Y.toList.any (fun y => (sng e).contains y) = true :=
+            List.any_eq_true.mpr ⟨y, Std.HashSet.mem_toList.mpr (h y (Std.HashSet.mem_toList.mp hy)), hc⟩
+          rw [evs, hg] at hz
+          rw [evs, hg']
+          simpa using hz
+  | image U R => exact imageS_mono h
+  | gather U sub => exact gatherS_mono h
 
 end MTC
 

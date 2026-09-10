@@ -1,6 +1,7 @@
 -- Copyright (c) 2026 Martin Rinard
 import Solver.Spec
 import Solver.Quadrant
+import Solver.Closure
 
 /-!
 # `Solver` — the public face of the solution mechanism
