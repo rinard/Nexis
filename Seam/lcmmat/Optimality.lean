@@ -44,35 +44,30 @@ open BaseLanguage.Analyses.LCM
     competing placement. -/
 theorem normalized_evalCount_le_safe {P : Program} (hwf : WellFormed P) (har : AllReachable P)
     {e : Expr} (hnum : isNumbered e = true) (pl : Node → Bool)
-    {σ : Store} {c_f : Config}
+    {σ : Store} {c_f : Config} (ks : Nat)
     (hrun : Steps (normalize P) ⟨(normalize P).entry, σ⟩ c_f)
     (hfin : Final (normalize P) c_f)
-    (ks : Nat) (hks : run (normalize P) ⟨(normalize P).entry, σ⟩ ks = (c_f, .next c_f))
+    (hks : run (normalize P) ⟨(normalize P).entry, σ⟩ ks = (c_f, .next c_f))
     (hcov : PlCovers (normalize P)
               (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf)
               e pl ⟨(normalize P).entry, σ⟩ ks false) :
+    -- `N` is the program the compiler feeds to LCM; `S` its solved seven-ghost bundle; `T` the optimized
+    -- program. Bound here rather than spelled out, so the statement reads as the inequality it is.
+    let N := normalize P
+    let S := lcmMatSolved N (normalize_wellNormalized P hwf har).wf
+    let T := transform N S
     ∃ kt τf,
-      run (transform (normalize P)
-             (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf))
-          ⟨blockOff (normalize P)
-             (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf)
-             (normalize P).entry, σ⟩ kt
-        = (⟨blockOff (normalize P)
-              (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf) c_f.node, τf⟩,
-           .next ⟨blockOff (normalize P)
-              (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf) c_f.node, τf⟩)
-      ∧ evalCount (transform (normalize P)
-             (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf)) e
-          ⟨blockOff (normalize P)
-             (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf)
-             (normalize P).entry, σ⟩ kt
-        ≤ ((runNodes (normalize P) ⟨(normalize P).entry, σ⟩ ks).filter pl).length := by
+      run T ⟨blockOff N S N.entry, σ⟩ kt
+        = (⟨blockOff N S c_f.node, τf⟩, .next ⟨blockOff N S c_f.node, τf⟩)
+      ∧ evalCount T e ⟨blockOff N S N.entry, σ⟩ kt
+        ≤ ((runNodes N ⟨N.entry, σ⟩ ks).filter pl).length := by
+  intro N S T
   obtain ⟨ne, hen⟩ := normalize_entry_noop P
-  have wn : WellNormalized (normalize P) := normalize_wellNormalized P hwf har
-  exact transform_evalCount_le_safe _ (lcmMatSolved_extremal _ wn.wf)
-    (gateSound_materialized _ rfl)
-    (gateComplete_materialized _ rfl (lcmMatSolved_extremal _ wn.wf)
-      (lcmMatSolved_extremalMat _ wn.wf) wn hen)
+  have wn : WellNormalized N := normalize_wellNormalized P hwf har
+  exact transform_evalCount_le_safe S (lcmMatSolved_extremal N wn.wf)
+    (gateSound_materialized S rfl)
+    (gateComplete_materialized S rfl (lcmMatSolved_extremal N wn.wf)
+      (lcmMatSolved_extremalMat N wn.wf) wn hen)
     wn hnum rfl pl hrun hfin ks hks hcov
 
 #assert_clean_axioms normalized_evalCount_le_safe
