@@ -6,6 +6,7 @@ import Generated.Seam.bwdchain.ValidExtremal
 import Generated.Seam.bwdmay.ValidExtremal
 import Generated.Seam.bwdslice.ValidExtremal
 import Seam.compile.CompileCorrect
+import Seam.compile.SafeOutcomes
 import Seam.constprop.Adapter
 import Generated.Seam.constprop.ValidExtremal
 import Generated.Seam.definiteassign.ValidExtremal

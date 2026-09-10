@@ -119,6 +119,28 @@ Each pair goes through the *same* generic theorem, differing only in which `Gate
 supplies. `runLcm_safe_preserves_all_{mat,demand}` is the sharpest single comparison: the same three
 conclusions about the same transform, one of them needing two fewer hypotheses.
 
+## 3b. The trichotomy, end to end
+
+`main_compile_correct` covers **halting** runs only, and that is forced in the default modes: classical
+LCM gives up divergence, classical PDCE gives up faults. Both have behaviour-preserving modes that keep
+what they gave up, and `Seam/compile/SafeOutcomes.lean` composes them through `cleanup` and `codegen`, so
+the *optimizing* compiler gets a trichotomy too:
+
+| | halt | fault | diverge |
+|---|---|---|---|
+| `main_compile_correct{,_demand}` (default modes) | ✅ | — | — |
+| `safe_compile_preserves_all{,_demand}` (`--lcm=safe --pdce=safe`) | ✅ | ✅ | ✅ |
+| `optpipe_preserves_*` (LCM + PDCE removed) | ✅ | ✅ | ✅ |
+
+`safe_compile_preserves_all` is the shipped seven-ghost analysis with the materialization gate, and needs
+**no extremality**: its LCM obligation is `gateSound_materialized`. `safe_compile_preserves_all_demand` is
+the same three conclusions for the classical gate, from `gateSound_demand`. Both axiom-clean.
+
+Divergence keeps one extra hypothesis under *both* gates — `SafeInserts`, the fault-freedom of inserted
+expressions that a non-terminating run cannot certify from a halting continuation. `--lcm=safe` discharges
+it by construction (`safeInserts_faultFree`), which is exactly why the safe mode is what makes the
+trichotomy available.
+
 ## 4. The two design decisions
 
 **(a) `isMat` is stated over the unfiltered `τᵤ`; the gate reads a filtered `ηₘK`.**

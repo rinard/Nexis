@@ -119,6 +119,14 @@ regenerating produces byte-identical files.
 - **End-to-end.** A single forward-simulation theorem (`pipeline_to_asm`) relates the
   whole pipeline — `normalize ∘ lower`, the LCM and PDCE optimizations, cleanup, and
   instruction selection — to a reference operational semantics on observable behavior.
+  In the default modes that covers **halting** runs: classical LCM gives up divergence
+  (it may hoist a faulting computation ahead of an infinite loop) and classical PDCE
+  gives up faults (it may delete a dead `x := y/0`). Under `--lcm=safe --pdce=safe` all
+  three outcomes survive the *optimizing* pipeline —
+  `Compile.safe_compile_preserves_all` (`Seam/compile/SafeOutcomes.lean`) states halting
+  with the observable store, faulting, and divergence for the program that compiler
+  emits. `AstToTac.optpipe_preserves_{halt,fault,diverge}` is the same trichotomy for
+  the pipeline with LCM and PDCE removed.
 - **The analyses.** Each generated solver is proved to compute the extremal
   (greatest / least) solution of its declarative prophecy/history-variable specification (`solve_correct`,
   `sorry`-free under a well-formedness precondition that normalization establishes
