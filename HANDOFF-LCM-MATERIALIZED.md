@@ -9,6 +9,36 @@ and reading `$?` reports the *pipe's* status and gives false greens.
 
 ---
 
+## How to use this document
+
+**The job is §4, steps 1–5, in order.** Each step names its files and line
+numbers. Land each one green — all six commands above exit 0 — and report before
+starting the next; do not batch them. Read §0, §3 and §5 before touching
+anything: §0 rules out a whole class of tempting-but-forbidden designs, §3 is the
+scope boundary, and §5 records findings that cost real effort to establish.
+
+**The completion predicate.** The goal is reached when, and only when,
+
+```
+BaseLanguage/Pass/Correctness/PipelineToAsm.lean
+```
+
+no longer takes `hLcm : Analyses.LCM.Extremal Slcm`, and `main_compile_correct`
+is proved without it. **Do not claim soundness-from-validity before that.**
+
+That predicate exists because it is easy to get wrong. In the session that
+produced this document, `main_compile_correct_mat` was briefly described as
+progress on soundness; it is not — it is the existing theorem with a different
+*extremal* bundle substituted, and it requires `hLcm` exactly as the classic one
+does. Wiring an analysis into the driver, proving facts *about* a ghost, and
+removing a hypothesis *from a theorem* are three different things. Only the
+third is the job.
+
+Partial credit is real and worth reporting — "step 3 done, `Cov` rebuilt, `hLcm`
+still required" is a good outcome. Overstatement is not.
+
+---
+
 ## 0. The prime directive
 
 Binding on all work here (from `README.md` at the submission commit; the
