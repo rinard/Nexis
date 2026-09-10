@@ -37,7 +37,7 @@ open BaseLanguage.Analyses.LCM
 
 /-- **The bundle the compiler actually runs**, named so the statements below can mention it without
     respelling `lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf` at every occurrence. -/
-def normSolved {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
+def normSolvedMat {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
     LCM.LcmSpec (normalize P) :=
   lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf
 
@@ -50,15 +50,15 @@ def normSolved {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
     extremality included (`lcmMatSolved_extremal`, `lcmMatSolved_extremalMat`), which is why no `Extremal`
     appears above. What remains is about the run (`hrun`/`hfin`/`hks`) and the competitor (`pl`/`hcov`),
     and `pl` is never constructed, so the bound really is against every safe placement. -/
-theorem normalized_evalCount_le_safe {P : Program} (hwf : WellFormed P) (har : AllReachable P)
+theorem normalized_evalCount_le_safe_mat {P : Program} (hwf : WellFormed P) (har : AllReachable P)
     {e : Expr} (hnum : isNumbered e = true) (pl : Node → Bool)
     {σ : Store} {c_f : Config} (ks : Nat)
     (hrun : Steps (normalize P) ⟨(normalize P).entry, σ⟩ c_f)
     (hfin : Final (normalize P) c_f)
     (hks : run (normalize P) ⟨(normalize P).entry, σ⟩ ks = (c_f, .next c_f))
-    (hcov : PlCovers (normalize P) (normSolved hwf har) e pl ⟨(normalize P).entry, σ⟩ ks false) :
+    (hcov : PlCovers (normalize P) (normSolvedMat hwf har) e pl ⟨(normalize P).entry, σ⟩ ks false) :
     let N := normalize P
-    let S := normSolved hwf har
+    let S := normSolvedMat hwf har
     let T := transform N S
     ∃ kt τf,
       run T ⟨blockOff N S N.entry, σ⟩ kt
@@ -74,6 +74,6 @@ theorem normalized_evalCount_le_safe {P : Program} (hwf : WellFormed P) (har : A
       (lcmMatSolved_extremalMat N wn.wf) wn hen)
     wn hnum rfl pl hrun hfin ks hks hcov
 
-#assert_clean_axioms normalized_evalCount_le_safe
+#assert_clean_axioms normalized_evalCount_le_safe_mat
 
 end BaseLanguage.Analyses.LcmMat

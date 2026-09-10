@@ -85,16 +85,16 @@ theorem main_compile_correct_with (a : Analyses.LcmMat.LcmAnalysis) (g : Analyse
               (Pass.iterateOpt_allReachable optProvider _ _ (wn_preOpt s).wf
                 (wn_preOpt s).allReach)) hen) _
 
-/-- The IR the shipped default emits — the seven-ghost analysis with the materialization gate. -/
-noncomputable def mainOpt (s : Stmt) : Program := mainOptWith .materialized .materialized s
+/-- The IR the shipped default emits — the six-ghost analysis with the classical demand gate, exactly
+    the configuration `Main` selects when no flag is given. **Must keep mirroring `Main.optStages`.** -/
+noncomputable def mainOpt (s : Stmt) : Program := mainOptWith .classic .demand s
 
-/-- **The `prophecyc` compiler is correct**, for the shipped default: the seven-ghost analysis with the
-    materialization gate.
+/-- **The `prophecyc` compiler is correct**, for the shipped default: the six-ghost analysis with the
+    classical KRS demand gate — the compiler as it stood before the seventh ghost existed.
 
-    Proved *without extremality* — `Or.inl rfl` discharges `pipeline_to_asm`'s LCM hypothesis by the gate
-    alone, so nothing on this path appeals to `πᵤ` being the least solution. Contrast
-    `main_compile_correct_demand`, the same statement for the classical gate, which supplies
-    `Or.inr (bundle_extremal …)` instead. -/
+    This path supplies `gateSound_demand`, so it *does* rest on `πᵤ` being the **least** solution:
+    `recoverable = πᵤK ∪ insertBefore` is kept honest by bounding a least fixpoint from below, which is
+    second-order and therefore assumable only as `Extremal S`. Contrast `main_compile_correct_mat`. -/
 theorem main_compile_correct (s : Stmt) (fuel : Nat) (σ' : Store) (hnt : Stmt.noTmp s)
     (h : Ast.evalS fuel s Store.init = .ok σ') :
     ∃ f sf, Asm.run (TacToAsm.codegen (Pass.Cleanup.cleanup (mainOpt s))) f
@@ -102,29 +102,8 @@ theorem main_compile_correct (s : Stmt) (fuel : Nat) (σ' : Store) (hnt : Stmt.n
           ∧ ∀ v ∈ (lower s).obs,
               sf.mem (TacToAsm.slot (TacToAsm.collectVars (Pass.Cleanup.cleanup (mainOpt s))) v)
                 = TacToAsm.encode (σ' v) :=
-  -- `gateSound_materialized` and nothing else: this proof never mentions `πᵤ` leastness, the
-  -- `prependEntry` `noop` entry, or `Extremal` in any form.
-  pipeline_to_asm s fuel σ' hnt h optProvider _ _ _
-    (Analyses.LCM.gateSound_materialized _ rfl) _
-
-/-- **…and for the classical demand gate**, on the six-ghost analysis — the compiler exactly as it stood
-    before the seventh ghost existed. Same statement, same emitted code; the proof supplies
-    `Or.inr (bundle_extremal …)`, so this path *does* rest on `πᵤ` being the least solution.
-
-    Both theorems are live, and the difference between their proofs is the whole result:
-    `main_compile_correct` needs only that its bundle is **valid**. -/
-theorem main_compile_correct_demand (s : Stmt) (fuel : Nat) (σ' : Store) (hnt : Stmt.noTmp s)
-    (h : Ast.evalS fuel s Store.init = .ok σ') :
-    ∃ f sf, Asm.run (TacToAsm.codegen (Pass.Cleanup.cleanup (mainOptWith .classic .demand s))) f
-              (TacToAsm.initState (Pass.Cleanup.cleanup (mainOptWith .classic .demand s)) Store.init)
-              = .halted sf
-          ∧ ∀ v ∈ (lower s).obs,
-              sf.mem (TacToAsm.slot
-                (TacToAsm.collectVars (Pass.Cleanup.cleanup (mainOptWith .classic .demand s))) v)
-                = TacToAsm.encode (σ' v) :=
-  -- `gateSound_demand` and nothing else — deliberately *not* routed through
-  -- `main_compile_correct_with`, so that ablating either gate's discharge breaks exactly one of these
-  -- two theorems.
+  -- `gateSound_demand` and nothing else — deliberately *not* routed through `main_compile_correct_with`,
+  -- so that ablating either gate's discharge breaks exactly one of these two theorems.
   pipeline_to_asm s fuel σ' hnt h optProvider _ _ _
     (by
       obtain ⟨ne, hen⟩ := normalize_entry_noop
@@ -137,8 +116,29 @@ theorem main_compile_correct_demand (s : Stmt) (fuel : Nat) (σ' : Store) (hnt :
           (Pass.iterateOpt_allReachable optProvider _ _ (wn_preOpt s).wf
             (wn_preOpt s).allReach)) hen) _
 
+/-- **…and for the seventh-ghost configuration**, selected by
+    `--lcm-analysis=mat --lcm-gate=materialized`. Same statement, same emitted code — but proved
+    **without extremality**: `gateSound_materialized` discharges `pipeline_to_asm`'s LCM hypothesis from
+    the gate alone, so nothing on this path appeals to `πᵤ` being the least solution, to the
+    `prependEntry` `noop` entry, or to `Extremal` in any form.
+
+    Both theorems are live, and the difference between their proofs is the whole result. -/
+theorem main_compile_correct_mat (s : Stmt) (fuel : Nat) (σ' : Store) (hnt : Stmt.noTmp s)
+    (h : Ast.evalS fuel s Store.init = .ok σ') :
+    ∃ f sf, Asm.run (TacToAsm.codegen
+                (Pass.Cleanup.cleanup (mainOptWith .materialized .materialized s))) f
+              (TacToAsm.initState
+                (Pass.Cleanup.cleanup (mainOptWith .materialized .materialized s)) Store.init)
+              = .halted sf
+          ∧ ∀ v ∈ (lower s).obs,
+              sf.mem (TacToAsm.slot (TacToAsm.collectVars
+                (Pass.Cleanup.cleanup (mainOptWith .materialized .materialized s))) v)
+                = TacToAsm.encode (σ' v) :=
+  pipeline_to_asm s fuel σ' hnt h optProvider _ _ _
+    (Analyses.LCM.gateSound_materialized _ rfl) _
+
 #assert_clean_axioms main_compile_correct_with
 #assert_clean_axioms main_compile_correct
-#assert_clean_axioms main_compile_correct_demand
+#assert_clean_axioms main_compile_correct_mat
 
 end BaseLanguage.Compile
