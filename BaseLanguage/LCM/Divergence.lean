@@ -62,13 +62,13 @@ def SafeInserts (P : Program) (S : LcmSpec P) : Prop :=
 /-- **`match_step_div`** — `match_step_core` with the no-fault obligations discharged from
     `SafeInserts` instead of from a halting continuation. No `StepsH`/`Final` hypothesis appears, which
     is the whole point: this step case is available on a run that never terminates. -/
-theorem match_step_div {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+theorem match_step_div {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P)
     (hsafe : SafeInserts P S) {c c' d : Config} {M : Assignments}
     (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c') :
     ∃ d', StepsPlus (transform P S) d d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M)
         ∧ Cov S c'.node (Mstep_edge S c.node c'.node M) :=
-  match_step_core S hS wn hm hpa hcov hstep
+  match_step_core S hg wn hm hpa hcov hstep
     (fun e he => eval_ne_none_of_faultFree ((hsafe hstep).1 e he))
     (fun e he => eval_ne_none_of_faultFree ((hsafe hstep).2 e he))
 
@@ -83,38 +83,49 @@ def DivRel (P : Program) (S : LcmSpec P) (c d : Config) : Prop :=
 /-- **The non-stuttering step simulation.** Each source step is matched by ≥ 1 target steps — the block
     always executes its floated control instruction — which is what keeps an infinite source run from
     collapsing to a finite target run. -/
-theorem stepSimG_div {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+theorem stepSimG_div {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P)
     (hsafe : SafeInserts P S) : StepSimG P (transform P S) (DivRel P S) := by
   rintro c c' d _hlt ⟨M, hm, hcov, hpa⟩ hstep
-  obtain ⟨d', ⟨mid, hlead, htail⟩, hm', hcov'⟩ := match_step_div S hS wn hsafe hm hpa hcov hstep
+  obtain ⟨d', ⟨mid, hlead, htail⟩, hm', hcov'⟩ := match_step_div S hg wn hsafe hm hpa hcov hstep
   exact ⟨mid, d', hlead, htail, ⟨_, hm', hcov', postpSubAnti_step S hstep hpa⟩⟩
 
 /-- **LCM preserves divergence, in the fault-free-insertion mode.** If `P` from its entry runs forever,
     so does `transform P S`. Fills the cell `transform_preserves_halt` leaves open, under the one extra
     hypothesis `SafeInserts` — which is exactly the hypothesis the classical mode cannot supply.
 
-    Same transform, same bundle requirements (`Extremal`, `WellNormalized`, the `prependEntry` `noop`
-    entry) as the halting theorem; the only addition is `hsafe`. -/
-theorem transform_preserves_diverges {P : Program} (S : LcmSpec P) (hS : Extremal S)
+    Same transform, same bundle requirements (validity, `WellNormalized`) as the halting theorem; the
+    only addition is `hsafe`. -/
+theorem transform_preserves_diverges {P : Program} (S : LcmSpec P) (hg : GateSound P S)
     (wn : WellNormalized P) (wf : WellFormed P) (hsafe : SafeInserts P S)
-    {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
     {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
     Diverges (transform P S) ⟨blockOff P S P.entry, σ⟩ := by
-  have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
-    intro e he
-    rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
-  exact diverges_of_stepsimG (Rel := DivRel P S) (stepSimG_div S hS wn hsafe) wf wf.entry_lt
-    ⟨Assignments.empty, match_init S σ, hcov, postpSubAnti_entry S⟩ hdiv
+  exact diverges_of_stepsimG (Rel := DivRel P S) (stepSimG_div S hg wn hsafe) wf wf.entry_lt
+    ⟨Assignments.empty, match_init S σ, Cov_entry S hg, postpSubAnti_entry S⟩ hdiv
+
+/-- **Divergence preservation under the materialization gate — from validity alone.** The third outcome
+    cell, on the same footing as `transform_preserves_halt_mat` and `transform_preserves_faulting_mat`. -/
+theorem transform_preserves_diverges_mat {P : Program} (S : LcmSpec P) (hm : S.gate = .materialized)
+    (wn : WellNormalized P) (wf : WellFormed P) (hsafe : SafeInserts P S)
+    {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
+    Diverges (transform P S) ⟨blockOff P S P.entry, σ⟩ :=
+  transform_preserves_diverges S (gateSound_materialized S hm) wn wf hsafe hdiv
+
+/-- **Divergence preservation under the classical demand gate** — needs `Extremal S` and the
+    `prependEntry` `noop` entry, exactly as its halt and fault counterparts do. -/
+theorem transform_preserves_diverges_demand {P : Program} (S : LcmSpec P) (hd : S.gate = .demand)
+    (hS : Extremal S) (wn : WellNormalized P) (wf : WellFormed P)
+    {ne : Node} (hen : P.fetch P.entry = some (.noop ne)) (hsafe : SafeInserts P S)
+    {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
+    Diverges (transform P S) ⟨blockOff P S P.entry, σ⟩ :=
+  transform_preserves_diverges S (gateSound_demand S hd hS wn hen) wn wf hsafe hdiv
 
 /-- The same statement phrased at the transformed program's own entry label. -/
-theorem transform_preserves_diverges' {P : Program} (S : LcmSpec P) (hS : Extremal S)
+theorem transform_preserves_diverges' {P : Program} (S : LcmSpec P) (hg : GateSound P S)
     (wn : WellNormalized P) (wf : WellFormed P) (hsafe : SafeInserts P S)
-    {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
     {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
     Diverges (transform P S) ⟨(transform P S).entry, σ⟩ := by
   rw [transform_entry]
-  exact transform_preserves_diverges S hS wn wf hsafe hen hdiv
+  exact transform_preserves_diverges S hg wn wf hsafe hdiv
 
 /-! ## Discharging the side condition: per-expression, by construction
 
@@ -137,13 +148,33 @@ theorem safeInserts_faultFree {P : Program} (S : LcmSpec P) :
 /-- **LCM preserves divergence in the fault-free-hoisting mode — with no side condition at all.**
     The `SafeInserts` hypothesis of `transform_preserves_diverges` is discharged by `safeInserts_faultFree`,
     so this holds for every program and every valid, extremal bundle. -/
-theorem transform_preserves_diverges_faultFree {P : Program} (S : LcmSpec P) (hS : Extremal S)
+theorem transform_preserves_diverges_faultFree {P : Program} (S : LcmSpec P)
+    (hg : GateSound P (S.withKeep Expr.faultFree))
     (wn : WellNormalized P) (wf : WellFormed P)
+    {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
+    Diverges (transform P (S.withKeep Expr.faultFree))
+      ⟨blockOff P (S.withKeep Expr.faultFree) P.entry, σ⟩ :=
+  transform_preserves_diverges (S.withKeep Expr.faultFree) hg wn wf
+    (safeInserts_faultFree S) hdiv
+
+/-- …under the materialization gate, from validity alone. `keep` and `gate` are independent fields, so
+    re-aiming the filter leaves the gate — and hence `gateSound_materialized` — untouched. -/
+theorem transform_preserves_diverges_faultFree_mat {P : Program} (S : LcmSpec P)
+    (hm : S.gate = .materialized) (wn : WellNormalized P) (wf : WellFormed P)
+    {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
+    Diverges (transform P (S.withKeep Expr.faultFree))
+      ⟨blockOff P (S.withKeep Expr.faultFree) P.entry, σ⟩ :=
+  transform_preserves_diverges_faultFree S
+    (gateSound_materialized (S.withKeep Expr.faultFree) hm) wn wf hdiv
+
+/-- …and under the classical demand gate, from extremality. -/
+theorem transform_preserves_diverges_faultFree_demand {P : Program} (S : LcmSpec P)
+    (hd : S.gate = .demand) (hS : Extremal S) (wn : WellNormalized P) (wf : WellFormed P)
     {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
     {σ : Store} (hdiv : Diverges P ⟨P.entry, σ⟩) :
     Diverges (transform P (S.withKeep Expr.faultFree))
       ⟨blockOff P (S.withKeep Expr.faultFree) P.entry, σ⟩ :=
-  transform_preserves_diverges (S.withKeep Expr.faultFree) (hS.withKeep _) wn wf
-    (safeInserts_faultFree S) hen hdiv
+  transform_preserves_diverges_faultFree S
+    (gateSound_demand (S.withKeep Expr.faultFree) hd (hS.withKeep _) wn hen) wn wf hdiv
 
 end BaseLanguage.Analyses.LCM

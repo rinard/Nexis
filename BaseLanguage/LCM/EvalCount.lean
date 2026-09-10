@@ -697,7 +697,7 @@ theorem block_evalCount_ifz {P : Program} (S : LcmSpec P) (e : Expr)
 /-- **`block_evalCount`, `assign` case.** The store changes (`σ → σ.update x v`); the gate may rewrite the
     control to read a hoisted temp; carried temps survive `x`'s def by `transp_holds`; the exit chain
     materializes `insertAfter` with the post-assign store. -/
-theorem block_evalCount_assign {P : Program} (S : LcmSpec P) (wn : WellNormalized P) (e : Expr)
+theorem block_evalCount_assign {P : Program} (S : LcmSpec P) (hg : GateSound P S) (e : Expr)
     {nd : Node} {x : Var} {e0 : Expr} {next : Node} {v : Val} {σ dσ : Store} {M : Assignments} {c_f : Config}
     (hf : P.fetch nd = some (.assign x e0 next)) (hv : eval σ e0 = some v)
     (hagree : ∀ y, NonFresh P y → dσ y = σ y)
@@ -725,14 +725,15 @@ theorem block_evalCount_assign {P : Program} (S : LcmSpec P) (wn : WellNormalize
         = some (.assign x rhs (if (insertAfter P S nd).toList.isEmpty
             then blockOff P S next else blockOff P S nd + (insertBefore P S nd).toList.length + 1))
         ∧ eval τ1 rhs = some v := by
-    by_cases hg : (isNumbered e0 && (recoverable P S nd).contains e0) = true
+    by_cases hfired : (isNumbered e0 && (recoverable P S nd).contains e0) = true
     · refine ⟨.atom (.var (tempFor P e0)),
-        by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_pos hg], ?_⟩
-      have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by simpa using hg
+        by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_pos hfired], ?_⟩
+      have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by
+        simpa using hfired
       have hrecov : e0 ∈ recoverable P S nd := Std.HashSet.contains_iff_mem.mp hand.2
-      have hHe0 : Holds τ1 σ (tempFor P e0) e0 := hH1 e0 (replace_covered S wn hf hand.1 hrecov hcov)
+      have hHe0 : Holds τ1 σ (tempFor P e0) e0 := hH1 e0 (replace_covered S hg hf hand.1 hrecov hcov)
       simp only [eval, evalAtom]; exact (Holds_iff.1 hHe0).trans hv
-    · refine ⟨e0, by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_neg hg], ?_⟩
+    · refine ⟨e0, by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_neg hfired], ?_⟩
       rw [eval_congr (fun y hy => hag1 y (nonFresh_of_used hf
         (by simp only [instrUsedVars]; exact readsVar_imp_mem hy)))]
       exact hv
@@ -849,7 +850,7 @@ theorem block_evalCount_assign {P : Program} (S : LcmSpec P) (wn : WellNormalize
     `match_step` produces), re-establishing `Match` at `Mstep c.node M` **and** evaluating `e` exactly
     `blockContribution c.node e = [e ∈ insertBefore] + [ctrl computes e] + [e ∈ insertAfter]` times. This is the
     per-block summand the eval-count fold sums over the source run. -/
-theorem block_evalCount {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+theorem block_evalCount {P : Program} (S : LcmSpec P) (hg : GateSound P S)
     {c c' d : Config} {M : Assignments} {c_f : Config} (e : Expr)
     (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c')
@@ -865,7 +866,7 @@ theorem block_evalCount {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
   | @assign nd σ x e0 next vv hf hvv =>
     subst hlabel
     obtain ⟨τF, hrun, hm', hcnt⟩ :=
-      block_evalCount_assign S wn e hf hvv hagree hHolds hMsub hpa hcov hcont hfin
+      block_evalCount_assign S hg e hf hvv hagree hHolds hMsub hpa hcov hcont hfin
     exact ⟨τF, hrun, Match_union_sub hm' (fun a ha => Assignments.mem_union.mpr
       (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inr ⟨x, e0, hf⟩)]; exact ha))), hcnt⟩
   | @noop nd σ next hf =>
@@ -909,7 +910,7 @@ theorem srcContrib_next {P : Program} {S : LcmSpec P} {e : Expr} {c c' : Config}
 
 /-- **The phase-2 fold.** Along a halting source run from `c`, the transform's whole-run eval count of `e`
     equals the source-side contribution sum. (`d` matches `c`; `kt` is the sum of the per-block fuels.) -/
-theorem evalCount_fold {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) (e : Expr) :
+theorem evalCount_fold {P : Program} (S : LcmSpec P) (hg : GateSound P S) (e : Expr) :
     ∀ {c c_f : Config}, StepsH P c c_f → Final P c_f →
     ∀ {d : Config} {M : Assignments}, Match P S c d M →
       Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node) → Cov S c.node M →
@@ -936,9 +937,9 @@ theorem evalCount_fold {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : Wel
           simp at hks
   | @head c c1 cf hstep htail ih =>
       intro hfin d M hm hpa hcov
-      obtain ⟨τF, hblockrun, hm1, hcnt_block⟩ := block_evalCount S wn e hm hpa hcov hstep htail hfin
+      obtain ⟨τF, hblockrun, hm1, hcnt_block⟩ := block_evalCount S hg e hm hpa hcov hstep htail hfin
       obtain ⟨kt1, τf, hrun1, hcnt1⟩ :=
-        ih hfin hm1 (postpSubAnti_step S hstep hpa) (Cov_step_edge S hS wn hstep hcov)
+        ih hfin hm1 (postpSubAnti_step S hstep hpa) (Cov_step_edge S hg hstep hcov)
       refine ⟨blockFuel P S c.node c1.node + kt1, τf, ?_, ?_⟩
       · rw [run_add hblockrun]; exact hrun1
       · intro ks hks
@@ -960,18 +961,14 @@ theorem evalCount_fold {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : Wel
     whole-run eval count of `e` equals `srcContrib` over the source run — the operational count `=` the
     source-side per-block contribution sum. The handle for comparing `srcContrib_S` to a safe placement
     `Place`. -/
-theorem transform_evalCount {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
-    {ne : Node} (hen : P.fetch P.entry = some (.noop ne)) (e : Expr)
+theorem transform_evalCount {P : Program} (S : LcmSpec P) (hg : GateSound P S) (e : Expr)
     {σ : Store} {c_f : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f) :
     ∃ kt τf, run (transform P S) ⟨blockOff P S P.entry, σ⟩ kt
               = (⟨blockOff P S c_f.node, τf⟩, .next ⟨blockOff P S c_f.node, τf⟩)
           ∧ ∀ ks, run P ⟨P.entry, σ⟩ ks = (c_f, .next c_f) →
               evalCount (transform P S) e ⟨blockOff P S P.entry, σ⟩ kt
                 = srcContrib P S e ⟨P.entry, σ⟩ ks := by
-  have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
-    intro e' he'
-    rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he'
-    exact absurd (πᵤK_sub S _ e' he'.1.1) (used_entry_empty S hS wn hen e')
-  exact evalCount_fold S hS wn e (steps_toH hrun) hfin (match_init S σ) (postpSubAnti_entry S) hcov
+  exact evalCount_fold S hg e (steps_toH hrun) hfin (match_init S σ) (postpSubAnti_entry S)
+    (Cov_entry S hg)
 
 end BaseLanguage.Analyses.LCM

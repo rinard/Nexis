@@ -228,8 +228,10 @@ theorem cE_imp_notPostp_succ {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn
     exact ue_transp_notPostp_succ S hstep hue (ue_sub_transp wn hue)
 
 /-- **`cE ⇒ e ∈ postp` at a non-boundary node** (the precondition lever). An insert is `⊆ postp` directly
-    (`cS_imp_postp`); a kept use has `e ∈ ue ∖ πᵤ ⊆ latestNode ⊆ ηₚ` (`Used.check` — `e ∉ recoverable ⊇ πᵤ`). -/
-theorem cE_imp_postp {P : Program} (S : LcmSpec P) {c c' : Config} {e : Expr}
+    (`cS_imp_postp`); a kept use is on the latest frontier (`keptUse_latestNode`), and
+    `latestNode ⊆ ηₚ`. -/
+theorem cE_imp_postp {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+    (hgc : GateComplete S) {c c' : Config} {e : Expr}
     (hi : c.node < P.size) (hnum : isNumbered e = true) (hstep : Step P c c')
     (hne : c.node ≠ P.entry) (hpi : e ∈ S.πₐ c.node) (hkeep : S.keep e = true)
     (hce : cE P S c.node e = true) : e ∈ S.ηₚ c.node := by
@@ -238,13 +240,7 @@ theorem cE_imp_postp {P : Program} (S : LcmSpec P) {c c' : Config} {e : Expr}
   rcases hce with hins | hk
   · exact cS_imp_postp S hstep hne hpi hins
   · obtain ⟨hue, hnr⟩ := keptCtrl_imp hi hnum hk
-    have hnused : e ∉ S.πᵤK c.node := fun h => hnr (mem_recoverable.2 (Or.inl h))
-    have hlat : e ∈ latestNode P S.ηₚ S.τₚ c.node := by
-      by_cases hl : e ∈ latestNode P S.ηₚ S.τₚ c.node
-      · exact hl
-      · exact absurd (mem_πᵤK.mpr
-          ⟨S.isUsed.check c.node e (Assignments.mem_sdiff.mpr ⟨hue, hl⟩), hkeep⟩) hnused
-    exact latestNode_sub_postp S c.node e hlat
+    exact latestNode_sub_postp S c.node e (keptUse_latestNode S hgc wn hue hkeep hnr)
 
 /-! ## Theorem A: `#cE ≤ #pl` for any per-interval-covering placement (2-bit run-induction)
 
@@ -310,7 +306,8 @@ def IntervalCov (P : Program) (S : LcmSpec P) (e : Expr) (pl : Node → Bool) :
     of `e` is bounded by the `pl`-count of any per-interval-covering placement, via the two-sided 2-bit
     interval potential. Carried: the debt invariant `sIns → e ∉ ηₚ` (engine-maintained) and the threaded
     `ηₚ ⊆ πₐ`; consumed: `IntervalCov` (boundary coverage). -/
-theorem cE_le_pl {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) {e : Expr}
+theorem cE_le_pl {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    (hgc : GateComplete S) {e : Expr}
     (hnum : isNumbered e = true) (hkeep : S.keep e = true) (pl : Node → Bool) :
     ∀ {c c_f : Config}, StepsH P c c_f → Final P c_f →
     ∀ ks, run P c ks = (c_f, .next c_f) →
@@ -385,7 +382,7 @@ theorem cE_le_pl {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNorma
               intro hce
               cases hsi : sIns with
               | false => rfl
-              | true => exact absurd (cE_imp_postp S hi hnum hstep hne hpi hkeep hce) (hdebt hsi)
+              | true => exact absurd (cE_imp_postp S wn hgc hi hnum hstep hne hpi hkeep hce) (hdebt hsi)
             have hdebt1 : (sIns || cE P S c.node e) = true → e ∉ S.ηₚ c1.node := by
               intro h
               rw [Bool.or_eq_true] at h

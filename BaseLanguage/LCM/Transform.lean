@@ -25,9 +25,11 @@ it on its KRS placement frontier, and **replaces** every original `x := e` by th
   (`assign`/`noop`) `i → next` — the KRS edge insertion the merge at `next` drops, carrying BOTH the
   killed/earliest-born part AND the transparent carry `(ηₚ i ∖ ue i) ∖ ηₚ next`; `∅` for
   `ifz`/`halt` (an `ifz`'s edge inserts ride the branch edges via `insertEdge`). The append-to-source case.
-* **replace** at node `n` is gated by `recoverable n = πᵤ n ∪ insertBefore n`: rewrite `x := e ↦ x := h_e`
-  only when the temp is materialized when control reaches `n` (born here, or demanded from upstream). An
-  isolated use (gated out of `insertBefore`, not in `πᵤ`) keeps its original `x := e`.
+* **replace** at node `n` is gated by `recoverable n = gateSet n ∪ insertBefore n`: rewrite
+  `x := e ↦ x := h_e` only when the temp is materialized when control reaches `n` (born here, or already
+  available on the way in). An isolated use (gated out of `insertBefore`, not available) keeps its
+  original `x := e`. `gateSet` is `πᵤ` or `ηₘ` per `S.gate` — see `recoverable`; the two agree on an
+  extremal bundle and differ in what correctness assumes.
 
 **Layout (prefix-sum blocks).** Each original node `i` becomes a contiguous *block* at offset `blockOff i`:
 its `insChain` (entry inserts), the floated+rewritten control with successors remapped to `blockOff`, then
@@ -122,10 +124,44 @@ def insertEdge (P : Program) (S : LcmSpec P) (i j : Node) : Assignments :=
 def insertOut (P : Program) (S : LcmSpec P) (n : Node) : Assignments :=
   Assignments.inter (latestOut P S n) (S.τᵤK n)
 
-/-- Expressions whose temp is **recoverable** on entry to `n`: born here (`insertBefore`) or demanded from
-    upstream (`πᵤ`). The replace gate — keeps insert/replace consistent. -/
+/-- **The gate's upstream half** — what the chosen `GateMode` says is already materialized on entry to
+    `n`, before `n`'s own entry chain runs.
+
+    `.demand` reads the backward demand ghost `πᵤ`; `.materialized` reads the forward availability ghost
+    `ηₘ`. Both are filtered by `keep`, so an expression the mode declines to hoist is never rewritten to
+    read a temp either. -/
+def gateSet (P : Program) (S : LcmSpec P) (n : Node) : Assignments :=
+  match S.gate with
+  | .demand       => S.πᵤK n
+  | .materialized => S.ηₘK n
+
+/-- Expressions whose temp is **recoverable** on entry to `n`: born here (`insertBefore`) or already
+    materialized on the way in (`gateSet`). The replace gate — keeps insert/replace consistent.
+
+    **The two settings are the substance of this development.** They differ in *polarity*, and that is
+    what correctness costs turn on:
+
+    * `.demand` gives `πᵤK n ∪ insertBefore n`, the classical KRS gate. `πᵤ` is a **least** fixpoint, so
+      "`πᵤ` is not too large" is a lower bound on a least solution — irreducibly second-order, expressible
+      by no clause, and therefore assumable only as `Extremal S`
+      (`examples/lcm-extremality/ExtremalityNeeded.lean` exhibits a valid bundle whose `πᵤ` gate reads a
+      temporary nothing ever wrote).
+    * `.materialized` gives `ηₘK n ∪ insertBefore n`. `Materialized`'s governing clause is an **upper**
+      bound: everything it admits at `n'` was placed on the way in or survived from `n`. That is the
+      soundness statement itself, so this gate needs only **validity**
+      (`Seam/lcmmat/Sound.lean`, `Correctness/Coverage.lean`).
+
+    Both obligations are packaged as `GateSound`, which the correctness development consumes once and
+    each mode discharges its own way — `transform_preserves_halt_demand` vs
+    `transform_preserves_halt_mat`.
+
+    `insertBefore` stays in the union under both settings because the gate's upstream half is indexed at
+    block *entry* — before `n`'s own entry chain runs — so what that chain materializes is not yet in it.
+
+    On an extremal bundle the two gates agree (`GateComplete`/`demand_materialized`), so the choice costs
+    no optimization power; it costs only hypotheses. -/
 def recoverable (P : Program) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.union (S.πᵤK n) (insertBefore P S n)
+  Assignments.union (gateSet P S n) (insertBefore P S n)
 
 /-! ## Materialization chains (straight-line `h_e := e` sequences) -/
 
@@ -249,7 +285,7 @@ def insertEdgeF (P : Program) (ae : Assignments) (S : LcmSpec P) (i j : Node) : 
   Assignments.inter (latestEdgeF P ae S.πₐ S.ηₐ S.ηₚ i j) (S.τᵤK i)
 
 def recoverableF (P : Program) (ae : Assignments) (S : LcmSpec P) (n : Node) : Assignments :=
-  Assignments.union (S.πᵤK n) (insertBeforeF P ae S n)
+  Assignments.union (gateSet P S n) (insertBeforeF P ae S n)
 
 def tempForF (P : Program) (AE : List Expr) (e : Expr) : Var := freshN P (AE.idxOf e)
 

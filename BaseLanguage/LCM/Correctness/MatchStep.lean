@@ -363,40 +363,19 @@ theorem fetch_mem_allExprs {P : Program} {nd : Node} {x : Var} {e : Expr} {next 
     (hf : P.fetch nd = some (.assign x e next)) (hn : isNumbered e = true) : e ∈ allExprs P :=
   ue_mem_allExprs (by unfold ue; rw [hf]; simp only [hn, if_true]; exact Assignments.mem_singleton.2 rfl)
 
-/-- **Replace-branch coverage.** When the gate replaces `x := e0` by `x := tempFor e0`, the
-    temp is materialized *before* the control: `e0 ∈ M ∪ insertBefore nd`. If `e0 ∈ πᵤ nd ∖ insertBefore`, then
-    `NoSelfRead` makes `e0` transparent at `nd` (`e0 ∈ de ⊆ availableOut ⇒ e0 ∉ earliest ⇒ e0 ∉ insertAfter`), so
-    `Cov` (`πᵤ ∖ insertBefore ∖ insertAfter ⊆ M`) places it in `M`. `insertAfter` (after the control) is too
-    late — `NoSelfRead` is exactly what rules out a self-reading compute landing there. -/
-theorem replace_covered {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+/-- **Replace-branch coverage.** When the gate replaces `x := e0` by `x := tempFor e0`, the temp is
+    materialized *before* the control: `e0 ∈ M ∪ insertBefore nd`. `GateSound.read` plus `Cov`.
+
+    The two gates pay differently for `read`. `.materialized` gets it by `mem_union` on the gate itself —
+    `ηₘ` is indexed at block entry, so "materialized too late" is not expressible. `.demand` has to rule
+    that case out by hand, with `NoSelfRead`: a numbered computation at `nd` is transparent there, hence
+    available out, hence not `earliest`, hence not in `insertAfter`. See `gateSound_demand`. -/
+theorem replace_covered {P : Program} (S : LcmSpec P) (hg : GateSound P S)
     {nd : Node} {x : Var} {e0 : Expr} {next : Node} {M : Assignments}
     (hf : P.fetch nd = some (.assign x e0 next)) (hnum : isNumbered e0 = true)
     (hrecov : e0 ∈ recoverable P S nd) (hcov : Cov S nd M) :
-    e0 ∈ M ∨ e0 ∈ insertBefore P S nd := by
-  rw [mem_recoverable] at hrecov
-  rcases hrecov with hused | hia
-  · by_cases hia : e0 ∈ insertBefore P S nd
-    · exact Or.inr hia
-    · have hnsr : exprReadsVar e0 x = false := wn.noSelfRead hf hnum
-      have heall : e0 ∈ allExprs P := fetch_mem_allExprs hf hnum
-      have htransp : e0 ∈ pass P nd := by
-        unfold pass; rw [Assignments.mem_filter']
-        exact ⟨heall, by simp [transpB, hf, instrDefVar, hnsr]⟩
-      have hcomp : e0 ∈ ue P nd := by
-        unfold ue; rw [hf]; simp only [hnum, if_true]; exact Assignments.mem_singleton.2 rfl
-      have hde : e0 ∈ de P nd := Assignments.mem_inter.mpr ⟨hcomp, htransp⟩
-      have hnie : e0 ∉ insertAfter P S nd := by
-        intro hin
-        unfold insertAfter at hin; rw [hf, Assignments.mem_inter] at hin
-        rcases Assignments.mem_union.mp (Assignments.mem_sdiff.mp hin.1).1 with hear | hcarry
-        · unfold earliest at hear; rw [Assignments.mem_inter, Assignments.mem_inter] at hear
-          have hnav : e0 ∉ availableOut P S.ηₐ nd := by
-            have := hear.1.2; unfold compl at this; exact (Assignments.mem_sdiff.mp this).2
-          exact hnav (by unfold availableOut; rw [Assignments.mem_union]; exact Or.inl hde)
-        · exact (Assignments.mem_sdiff.mp hcarry).2 hcomp
-      exact Or.inl (hcov e0 (Assignments.mem_sdiff.mpr ⟨Assignments.mem_sdiff.mpr ⟨hused, hia⟩,
-        insertAfter_eq_insertOut S (Or.inr ⟨x, e0, hf⟩) ▸ hnie⟩))
-  · exact Or.inr hia
+    e0 ∈ M ∨ e0 ∈ insertBefore P S nd :=
+  (hg.read hf hnum hrecov).imp (fun h => hcov e0 h) id
 
 /-- **`match_step`, `assign` case.** The store changes (`σ → σ.update x v`); the gate may rewrite the control
     to read a hoisted temp (coverage via `replace_covered`); carried temps survive the def of `x` by
@@ -551,7 +530,7 @@ theorem insertAfter_sub_insertEdge_of_step {P : Program} (S : LcmSpec P) {c c' :
       unavailable on a non-terminating run — which is exactly why plain LCM does not preserve divergence.
     * `match_step_div` (`LCM/Divergence.lean`) discharges them **syntactically**, from `Expr.faultFree`,
       which needs no continuation and therefore also works on a divergent run. -/
-theorem match_step_core {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+theorem match_step_core {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P)
     {c c' d : Config} {M : Assignments}
     (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c')
@@ -563,14 +542,15 @@ theorem match_step_core {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : We
   obtain ⟨dn, dσ⟩ := d
   suffices h : ∃ d', StepsPlus (transform P S) ⟨dn, dσ⟩ d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M) by
     obtain ⟨d', hsteps, hmatch⟩ := h
-    exact ⟨d', hsteps, hmatch, Cov_step_edge S hS wn hstep hcov⟩
+    exact ⟨d', hsteps, hmatch, Cov_step_edge S hg hstep hcov⟩
   cases hstep with
   | @assign nd σ x e0 next vv hf hvv =>
     subst hlabel
     obtain ⟨d', hs, hm'⟩ := match_step_assign S wn hf hvv hagree hHolds hMsub hpa
-      (fun hg => by
-        have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by simpa using hg
-        exact replace_covered S wn hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
+      (fun hfired => by
+        have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by
+          simpa using hfired
+        exact replace_covered S hg hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
       hnfB
       (fun e he => hnfE e (Assignments.mem_toList.2
         (insertAfter_sub_insertEdge_of_step S (Step.assign hf hvv) (Assignments.mem_toList.1 he))))
@@ -596,14 +576,14 @@ theorem match_step_core {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : We
     (`insertBefore_sub_anti` / `edgeIns_sub_anti`), and `antiNoFault` turns anticipation plus a run that
     reaches `halt` into "the source itself evaluates it, hence it does not fault". This is the certificate
     that a divergent run cannot supply; see `LCM/Divergence.lean` for the mode that replaces it. -/
-theorem match_step {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+theorem match_step {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P)
     {c c' d : Config} {M : Assignments} {c_f : Config}
     (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c')
     (hcont : StepsH P c' c_f) (hfin : Final P c_f) :
     ∃ d', StepsPlus (transform P S) d d' ∧ Match P S c' d' (Mstep_edge S c.node c'.node M)
         ∧ Cov S c'.node (Mstep_edge S c.node c'.node M) :=
-  match_step_core S hS wn hm hpa hcov hstep
+  match_step_core S hg wn hm hpa hcov hstep
     (fun e he => by
       obtain ⟨w, hw⟩ := antiNoFault S (StepsH.head hstep hcont) hfin e
         (insertBefore_sub_anti S hpa (Assignments.mem_toList.1 he))
@@ -696,6 +676,171 @@ theorem used_entry_empty {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : W
   rw [if_pos rfl] at hle
   exact Std.HashSet.not_mem_empty hle
 
+/-! ## The two gates, measured against each other
+
+Choosing `.materialized` over `.demand` costs no optimization power, and this is the theorem that says
+so. Everything the classical `πᵤ` gate admitted at `n` — bar what `n`'s own chains materialize, which the
+gate names separately — the materialization ghost already admits.
+
+It is proved by **greatest-ness of `ηₘ`** (`ExtremalMat`): the classical demand set is *itself* a valid
+`Materialized`, so the greatest one contains it. Its `update` obligation is precisely `demand_step_edge`
+(the classical coverage maintenance), read at `M := demandSet S c.node` where the hypothesis is
+reflexivity; its `seed` obligation is `used_entry_empty`.
+
+Note which side of the ledger this sits on. `Extremal S`, `ExtremalMat S`, `WellNormalized P` and the
+`prependEntry` `noop` entry are hypotheses of **correctness** for the `.demand` gate. For
+`.materialized` they are hypotheses of *completeness* only — of the claim that the cheaper gate is no
+weaker — which is an optimality question. Correctness under `.materialized` sees none of them. -/
+
+/-- **`demandSet ⊆ ηₘ`** — the classical demand gate is subsumed by the materialization gate. -/
+theorem demand_materialized {P : Program} (S : LcmSpec P) (hS : Extremal S) (hM : ExtremalMat S)
+    (wn : WellNormalized P)
+    {ne : Node} (hen : P.fetch P.entry = some (.noop ne)) (n : Node) :
+    Assignments.Subset (demandSet S n) (S.ηₘ n) := by
+  refine hM.ηₘ (demandSet S) ⟨?_, ?_, ?_⟩ n
+  · -- update: the old coverage maintenance, at `M := demandSet S c.node`
+    intro c c' hstep e he
+    have hstepped :=
+      demand_step_edge S hS wn hstep (M := demandSet S c.node) Assignments.subset_refl e he
+    rcases Assignments.mem_union.mp hstepped with hms | hedge
+    · rcases Assignments.mem_union.mp hms with hbody | hafter
+      · obtain ⟨hmb, hpass⟩ := Assignments.mem_inter.mp hbody
+        rcases Assignments.mem_union.mp hmb with hM | hib
+        · -- the carry: `demandSet c ∩ pass c ⊆ demandSet c ∖ notPass c`
+          refine Assignments.mem_union.mpr (Or.inr (Assignments.mem_sdiff.mpr ⟨hM, ?_⟩))
+          intro hnp; exact (Assignments.mem_sdiff.mp hnp).2 hpass
+        · -- the entry chain, surviving `c`'s instruction: `insertBefore c ∩ pass c ⊆ nodeGen ∩ pass c`
+          obtain ⟨hdiff, hτK⟩ := Assignments.mem_inter.mp hib
+          exact Assignments.mem_union.mpr (Or.inl (Assignments.mem_union.mpr (Or.inr
+            (Assignments.mem_inter.mpr
+              ⟨Assignments.mem_inter.mpr ⟨hdiff, τᵤK_sub S c.node e hτK⟩, hpass⟩))))
+      · -- the exit chain is the taken edge's chain
+        obtain ⟨hlat, hτK⟩ :=
+          Assignments.mem_inter.mp (insertAfter_sub_insertEdge_of_step S hstep hafter)
+        exact Assignments.mem_union.mpr (Or.inl (Assignments.mem_union.mpr (Or.inl
+          (Assignments.mem_inter.mpr ⟨hlat, τᵤK_sub S c.node e hτK⟩))))
+    · obtain ⟨hlat, hτK⟩ := Assignments.mem_inter.mp hedge
+      exact Assignments.mem_union.mpr (Or.inl (Assignments.mem_union.mpr (Or.inl
+        (Assignments.mem_inter.mpr ⟨hlat, τᵤK_sub S c.node e hτK⟩))))
+  · -- seed: nothing is demanded at the entry
+    intro e he
+    exact absurd (πᵤK_sub S _ e (mem_demandSet.mp he).1.1) (used_entry_empty S hS wn hen e)
+  · intro m e he
+    exact S.isUsed.within m e (πᵤK_sub S m e (mem_demandSet.mp he).1.1)
+
+/-- **`GateComplete` for the materialization gate.** The filtered form of `demand_materialized`: `keep`
+    travels with the demand, so the covered set subsumes the classical one too. This is what lets the
+    eval-count development run over *either* gate — see `keptUse_latestNode`. -/
+theorem gateComplete_materialized {P : Program} (S : LcmSpec P) (hm : S.gate = .materialized)
+    (hS : Extremal S) (hM : ExtremalMat S) (wn : WellNormalized P)
+    {ne : Node} (hen : P.fetch P.entry = some (.noop ne)) : GateComplete S := by
+  intro n e he
+  rw [covSet_mat hm]
+  exact mem_ηₘK.mpr ⟨demand_materialized S hS hM wn hen n e he,
+    (mem_πᵤK.mp (mem_demandSet.mp he).1.1).2⟩
+
+/-- **A kept numbered computation is on the latest frontier.** If the replace gate declines to rewrite
+    `x := e` at `n`, then `e ∈ latestNode n` — so `n` is where the placement wants `e` anyway, and the
+    kept computation is not a redundant one.
+
+    This is the shape the eval-count development reads off the gate, and it is stated over `GateComplete`
+    so it runs under **either** `GateMode`. Under `.demand` that hypothesis is definitional
+    (`gateComplete_demand`) and this is the classical argument: "not recoverable" gives "not demanded"
+    directly, and `Used.check` finishes it. Under `.materialized` it is `gateComplete_materialized`, and
+    the step goes the other way round — `Used.check` first, then `demand_materialized` to show the
+    materialization gate would have fired. `NoSelfRead` rules out the remaining escape under both, that
+    `e` is materialized by `n`'s own *exit* chain, which is too late to read from `n`'s control. -/
+theorem keptUse_latestNode {P : Program} (S : LcmSpec P) (hgc : GateComplete S)
+    (wn : WellNormalized P) {n : Node} {e : Expr}
+    (hue : e ∈ ue P n) (hkeep : S.keep e = true) (hnr : e ∉ recoverable P S n) :
+    e ∈ latestNode P S.ηₚ S.τₚ n := by
+  by_cases hl : e ∈ latestNode P S.ηₚ S.τₚ n
+  · exact hl
+  exfalso
+  obtain ⟨x, next, hf, hnum⟩ := mem_ue hue
+  have hnsr : exprReadsVar e x = false := wn.noSelfRead hf hnum
+  have hde : e ∈ de P n := Assignments.mem_inter.mpr ⟨hue, ue_sub_transp wn hue⟩
+  -- `e` cannot be materialized by `n`'s exit chain: it is available out of `n`, hence not `earliest`,
+  -- and it is computed at `n`, hence not the transparent carry.
+  have hnie : e ∉ insertAfter P S n := by
+    intro hin
+    unfold insertAfter at hin; rw [hf, Assignments.mem_inter] at hin
+    rcases Assignments.mem_union.mp (Assignments.mem_sdiff.mp hin.1).1 with hear | hcarry
+    · unfold earliest at hear; rw [Assignments.mem_inter, Assignments.mem_inter] at hear
+      have hnav : e ∉ availableOut P S.ηₐ n := by
+        have := hear.1.2; unfold compl at this; exact (Assignments.mem_sdiff.mp this).2
+      exact hnav (by unfold availableOut; rw [Assignments.mem_union]; exact Or.inl hde)
+    · exact (Assignments.mem_sdiff.mp hcarry).2 hue
+  exact hnr (covSet_sub_recoverable S n e (hgc n e (mem_demandSet.mpr
+    ⟨⟨mem_πᵤK.mpr ⟨S.isUsed.check n e (Assignments.mem_sdiff.mpr ⟨hue, hl⟩), hkeep⟩,
+      fun hib => hnr (mem_recoverable.mpr (Or.inr hib))⟩,
+     insertAfter_eq_insertOut S (Or.inr ⟨x, e, hf⟩) ▸ hnie⟩)))
+
+/-! ## `GateSound` for the classical `.demand` gate
+
+This is the price of reading a **least** ghost, itemised. Each of the three fields needs something the
+materialization gate gets for free:
+
+* `entry` needs `πᵤ(entry) = ∅` — `used_entry_empty`, a *leastness witness* (`Extremal S`, plus the
+  `prependEntry` `noop` entry to know the entry computes and avails nothing);
+* `step` is `demand_step_edge`, the classical coverage maintenance, which consumes `used_decomp`,
+  `killed_in_insertAfter` and `latestOut_used_succ_sub_insertEdge` — all leastness arguments;
+* `read` needs `NoSelfRead` (a `WellNormalized` field) to rule out the temp being materialized by the
+  node's own *exit* chain, after the control that would read it. `ηₘ` is indexed at block entry, so for
+  `.materialized` that case does not arise at all. -/
+
+theorem covSet_demand {P : Program} {S : LcmSpec P} (hd : S.gate = .demand) (n : Node) :
+    covSet S n = demandSet S n := by unfold covSet; rw [hd]
+
+/-- **`GateSound` for the demand gate, from extremality.** The classical LCM correctness argument,
+    unchanged in content and repackaged as the three obligations the simulation actually uses. -/
+theorem gateSound_demand {P : Program} (S : LcmSpec P) (hd : S.gate = .demand)
+    (hS : Extremal S) (wn : WellNormalized P)
+    {ne : Node} (hen : P.fetch P.entry = some (.noop ne)) : GateSound P S where
+  entry := by
+    intro e he
+    rw [covSet_demand hd] at he
+    exact absurd (πᵤK_sub S _ e (mem_demandSet.mp he).1.1) (used_entry_empty S hS wn hen e)
+  step := by
+    intro c c' hstep e he
+    rw [covSet_demand hd] at he ⊢
+    have hstepped :=
+      demand_step_edge S hS wn hstep (M := demandSet S c.node) Assignments.subset_refl e he
+    rcases Assignments.mem_union.mp hstepped with hms | hedge
+    · rcases Assignments.mem_union.mp hms with hbody | hafter
+      · obtain ⟨hmb, hpass⟩ := Assignments.mem_inter.mp hbody
+        exact (Assignments.mem_union.mp hmb).elim
+          (fun hM => Or.inr (Or.inr (Or.inr ⟨hM, hpass⟩)))
+          (fun hib => Or.inr (Or.inr (Or.inl ⟨hib, hpass⟩)))
+      · exact Or.inr (Or.inl hafter)
+    · exact Or.inl hedge
+  read := by
+    intro nd x e0 next hf hnum hrecov
+    rw [covSet_demand hd]
+    rcases mem_recoverable.mp hrecov with hused | hia
+    · by_cases hia : e0 ∈ insertBefore P S nd
+      · exact Or.inr hia
+      -- `e0` is computed at `nd` and transparent there (`NoSelfRead`), so it is available out of `nd`,
+      -- hence not `earliest`, hence not on `nd`'s exit chain — which would have been too late to read.
+      · have hnsr : exprReadsVar e0 x = false := wn.noSelfRead hf hnum
+        have hcomp : e0 ∈ ue P nd := by
+          unfold ue; rw [hf]; simp only [hnum, if_true]; exact Assignments.mem_singleton.2 rfl
+        have hde : e0 ∈ de P nd :=
+          Assignments.mem_inter.mpr ⟨hcomp, ue_sub_transp wn hcomp⟩
+        have hnie : e0 ∉ insertAfter P S nd := by
+          intro hin
+          unfold insertAfter at hin; rw [hf, Assignments.mem_inter] at hin
+          rcases Assignments.mem_union.mp (Assignments.mem_sdiff.mp hin.1).1 with hear | hcarry
+          · unfold earliest at hear; rw [Assignments.mem_inter, Assignments.mem_inter] at hear
+            have hnav : e0 ∉ availableOut P S.ηₐ nd := by
+              have := hear.1.2; unfold compl at this; exact (Assignments.mem_sdiff.mp this).2
+            exact hnav (by unfold availableOut; rw [Assignments.mem_union]; exact Or.inl hde)
+          · exact (Assignments.mem_sdiff.mp hcarry).2 hcomp
+        refine Or.inl (mem_demandSet.mpr ⟨⟨?_, hia⟩,
+          insertAfter_eq_insertOut S (Or.inr ⟨x, e0, hf⟩) ▸ hnie⟩)
+        unfold gateSet at hused; rw [hd] at hused; exact hused
+    · exact Or.inr hia
+
 /-! ## The lift `sim` and the top-level `transform_preserves_halt`
 
 `sim` is a forward induction on the head-recursive halting run `StepsH`: at each step `match_step` matches
@@ -704,7 +849,7 @@ the block and maintains `Match`/`Cov` (and `hpa` via `postpSubAnti_step`); at th
 (`match_init`, `M = ∅`, `Cov` via `used_entry_empty`, `hpa` via `postpSubAnti_entry`). -/
 
 /-- **The forward simulation lift.** -/
-theorem sim {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) :
+theorem sim {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P) :
     ∀ {c c_f : Config}, StepsH P c c_f → Final P c_f → (∀ v ∈ P.obs, varIsOrig v = true) →
     ∀ {d : Config} {M : Assignments}, Match P S c d M → Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node) →
       Cov S c.node M →
@@ -715,25 +860,57 @@ theorem sim {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized
   | refl => intro hfin hobs d M hm hpa _; exact match_final_obs S hm hpa hfin hobs
   | @head c c1 cf hstep htail ih =>
       intro hfin hobs d M hm hpa hcov
-      obtain ⟨d1, hsteps1, hm1, hcov1⟩ := match_step S hS wn hm hpa hcov hstep htail hfin
+      obtain ⟨d1, hsteps1, hm1, hcov1⟩ := match_step S hg wn hm hpa hcov hstep htail hfin
       obtain ⟨d_f, hsteps2, hfinf, hobsf⟩ := ih hfin hobs hm1 (postpSubAnti_step S hstep hpa) hcov1
       exact ⟨d_f, steps_trans hsteps1.toSteps hsteps2, hfinf, hobsf⟩
 
 /-- **`transform_preserves_halt` — LCM correctness (terminating-run forward simulation).** On a halting
-    source run, the transform halts with every observable agreeing. Requires an **extremal** bundle `S`
-    (extremality drives LCM down-safety — unlike PDCE, a merely valid bundle does not suffice), over a
-    `WellNormalized` program with the `prependEntry` `noop` entry. -/
-theorem transform_preserves_halt {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    source run, the transform halts with every observable agreeing.
+
+    Stated once, over `GateSound P S` — the single obligation the replace gate owes the simulation. What
+    that obligation *costs* is the whole point of the two `GateMode`s, and the two corollaries below make
+    the contrast explicit:
+
+    * `transform_preserves_halt_mat` — the `.materialized` gate, **any valid bundle**;
+    * `transform_preserves_halt_demand` — the `.demand` gate, needing `Extremal S` and the `prependEntry`
+      `noop` entry as well.
+
+    `wn` survives under both, because the block-execution reasoning uses it independently of the gate. -/
+theorem transform_preserves_halt {P : Program} (S : LcmSpec P) (hg : GateSound P S)
+    (wn : WellNormalized P)
+    (hobs : ∀ v ∈ P.obs, varIsOrig v = true)
+    {σ : Store} {c_f : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f) :
+    ∃ d_f, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ d_f ∧ Final (transform P S) d_f
+         ∧ ∀ v ∈ P.obs, d_f.store v = c_f.store v :=
+  sim S hg wn (steps_toH hrun) hfin hobs (match_init S σ) (postpSubAnti_entry S) (Cov_entry S hg)
+
+/-- **LCM correctness for the materialization gate — from validity alone.**
+
+    No `Extremal S`, and no `prependEntry` `noop` entry. Both used to be required, and both entered at
+    exactly one place: the replace gate. Reading `πᵤ` there, the proof had to know that `πᵤ` was not too
+    large — a lower bound on a least fixpoint, which no clause can state, so it came in as extremality;
+    and the coverage base case needed `πᵤ(entry) = ∅`, which is where the entry `noop` was used. Reading
+    `ηₘ`, whose governing clause is an upper bound, both obligations *are* validity. -/
+theorem transform_preserves_halt_mat {P : Program} (S : LcmSpec P) (hm : S.gate = .materialized)
+    (wn : WellNormalized P)
+    (hobs : ∀ v ∈ P.obs, varIsOrig v = true)
+    {σ : Store} {c_f : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f) :
+    ∃ d_f, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ d_f ∧ Final (transform P S) d_f
+         ∧ ∀ v ∈ P.obs, d_f.store v = c_f.store v :=
+  transform_preserves_halt S (gateSound_materialized S hm) wn hobs hrun hfin
+
+/-- **LCM correctness for the classical demand gate — the original theorem, unchanged.** Requires an
+    **extremal** bundle (extremality drives LCM down-safety — unlike PDCE, a merely valid bundle does not
+    suffice: `examples/lcm-extremality/ExtremalityNeeded.lean`), over a `WellNormalized` program with the
+    `prependEntry` `noop` entry. -/
+theorem transform_preserves_halt_demand {P : Program} (S : LcmSpec P) (hd : S.gate = .demand)
+    (hS : Extremal S) (wn : WellNormalized P)
     {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
     (hobs : ∀ v ∈ P.obs, varIsOrig v = true)
     {σ : Store} {c_f : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f) :
     ∃ d_f, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ d_f ∧ Final (transform P S) d_f
-         ∧ ∀ v ∈ P.obs, d_f.store v = c_f.store v := by
-  have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
-    intro e he
-    rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
-  exact sim S hS wn (steps_toH hrun) hfin hobs (match_init S σ) (postpSubAnti_entry S) hcov
+         ∧ ∀ v ∈ P.obs, d_f.store v = c_f.store v :=
+  transform_preserves_halt S (gateSound_demand S hd hS wn hen) wn hobs hrun hfin
 
 
 end BaseLanguage.Analyses.LCM

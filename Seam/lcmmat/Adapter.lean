@@ -18,17 +18,18 @@ Two things make that assembly free:
 * the seventh ghost reads only ghosts 1–6, so it adds no constraint on them. `lcmMatSolved` therefore
   computes exactly the classical bundle, and `lcmMatSolved_toLcm` says so at the level of the ghosts.
 
-**What this is for.** LCM's correctness proof assumes `Extremal S`, and the reason is the replace gate:
-`recoverable = πᵤK ∪ insertBefore` can admit a replacement with no matching insertion when `πᵤ` is valid
-but too large (`examples/lcm-extremality/ExtremalityNeeded.lean`). Ruling that out needs a *lower* bound on
-a *least* fixpoint — irreducibly second-order, expressible by no clause. `matRecoverable` below is the
-proposed replacement gate, reading `ηₘ` instead, whose governing clause is an *upper* bound and therefore
-follows from validity alone.
+**What this is for.** LCM's correctness proof used to assume `Extremal S`, and the reason was the replace
+gate: `recoverable = πᵤK ∪ insertBefore` can admit a replacement with no matching insertion when `πᵤ` is
+valid but too large (`examples/lcm-extremality/ExtremalityNeeded.lean`). Ruling that out needs a *lower*
+bound on a *least* fixpoint — irreducibly second-order, expressible by no clause. The shipped gate reads
+`ηₘ` instead, whose governing clause is an *upper* bound and therefore follows from validity alone.
 
-**Status.** The bundle, its validity and its extremality are machine-checked. The gate is a definition
-only: nothing here yet proves that `ηₘ` under-approximates what the transform actually materializes, which
-is the lemma a verified swap would need first. `BaseLanguage/LCM/Transform.lean` still uses the classical
-gate, and the compiler still runs the classical transform.
+**Status.** Done and shipped, *alongside* the classical gate rather than in place of it.
+`BaseLanguage/LCM/Transform.lean` reads `S.gate : LCM.GateMode` and both settings are proved —
+`transform_preserves_halt_mat` (validity) and `transform_preserves_halt_demand` (extremality). Each
+analysis ships the gate it can afford (`LcmAnalysis.bundleGate`): `Lcm.gsl` has no `ηₘ`, so `lcmSolved`
+carries `ηₘ = ∅` and ships `.demand`; `LcmMat.gsl` solves `ηₘ` and ships `.materialized`. `--lcm-gate`
+overrides either way.
 -/
 
 namespace BaseLanguage.Analyses.LcmMat
@@ -65,7 +66,11 @@ def lcmMatSolved (P : Program) (wf : WellFormed P) : LCM.LcmSpec P :=
     isPostp   := postp_of (ηₚSol_valid P wf)
     isTauP    := τₚSol_valid P wf
     isUsed    := used_of (πᵤSol_valid P wf)
-    isUsedOut := τᵤSol_valid P wf }
+    isUsedOut := τᵤSol_valid P wf
+    ηₘ        := ηₘSol P
+    isMat     := ηₘSol_valid P wf
+    -- the seventh ghost is solved here, so this bundle can carry the validity-sufficient gate
+    gate      := .materialized }
 
 /-- …and it is extremal, so every existing correctness and optimality theorem applies to it unchanged. -/
 theorem lcmMatSolved_extremal (P : Program) (wf : WellFormed P) :
@@ -126,14 +131,32 @@ def LcmAnalysis.bundle : LcmAnalysis → (P : Program) → WellFormed P → LCM.
   | .classic      => LCM.lcmSolved
   | .materialized => lcmMatSolved
 
-/-- **Either choice is extremal**, so every correctness and optimality theorem applies to both. -/
+/-- **The replace gate each analysis can afford.** `Lcm.gsl` declares no `ηₘ`, so `lcmSolved` carries
+    `ηₘ = ∅`: the materialization gate would be *sound* under it but would replace nothing, so its
+    natural gate is the classical `.demand` one — which it can afford, being `Extremal`. `LcmMat.gsl`
+    solves `ηₘ`, so it ships the validity-sufficient `.materialized` gate. `--lcm-gate` overrides. -/
+def LcmAnalysis.bundleGate : LcmAnalysis → LCM.GateMode
+  | .classic      => .demand
+  | .materialized => .materialized
+
+/-- **Either choice is extremal in the six classical ghosts**, so every correctness and optimality
+    theorem stated over `Extremal` applies to both — including the classical `.demand` gate's
+    correctness proof. -/
 theorem LcmAnalysis.bundle_extremal (a : LcmAnalysis) (P : Program) (wf : WellFormed P) :
     LCM.Extremal (a.bundle P wf) := by
   cases a with
   | classic      => exact LCM.lcmSolved_extremal P wf
   | materialized => exact lcmMatSolved_extremal P wf
 
+/-- **Only the seven-ghost choice has a greatest `ηₘ`.** `Lcm.gsl` declares six ghosts, so `lcmSolved`
+    carries `ηₘ = ∅` — valid, hence a sound `.materialized` gate, but not the greatest one, so it does
+    not satisfy `ExtremalMat` and the `.materialized` gate replaces nothing under it. This is exactly
+    why `ExtremalMat` is kept apart from `Extremal`. -/
+theorem lcmMatSolved_extremalMat (P : Program) (wf : WellFormed P) :
+    LCM.ExtremalMat (lcmMatSolved P wf) := ⟨ηₘ_greatest P wf⟩
+
 #assert_clean_axioms LcmAnalysis.bundle_extremal
+#assert_clean_axioms lcmMatSolved_extremalMat
 
 #assert_clean_axioms lcmMatSolved
 #assert_clean_axioms lcmMatSolved_extremal

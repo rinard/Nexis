@@ -431,16 +431,20 @@ theorem insertBefore_sub_latestNode {P : Program} {S : LcmSpec P} {i : Node} {e 
   (mem_insertBefore.mp he).1.1
 
 theorem mem_recoverable {P : Program} {S : LcmSpec P} {i : Node} {e : Expr} :
-    e ∈ recoverable P S i ↔ e ∈ S.πᵤK i ∨ e ∈ insertBefore P S i := by
+    e ∈ recoverable P S i ↔ e ∈ gateSet P S i ∨ e ∈ insertBefore P S i := by
   unfold recoverable; rw [Assignments.mem_union]
 
 /-- **The replace gate only ever fires on a hoistable expression.** Both halves of `recoverable` are
-    filtered by `keep`, which is exactly what keeps insertion and replacement consistent: an expression the
-    mode declines to hoist is also never rewritten to read a temp. -/
+    filtered by `keep` — under **either** `GateMode`, since `gateSet` is `πᵤK` or `ηₘK` and both carry the
+    filter. That is exactly what keeps insertion and replacement consistent: an expression the mode
+    declines to hoist is also never rewritten to read a temp. -/
 theorem recoverable_keep {P : Program} {S : LcmSpec P} {i : Node} {e : Expr}
     (h : e ∈ recoverable P S i) : S.keep e = true := by
   rcases mem_recoverable.mp h with hu | hib
-  · exact (mem_πᵤK.mp hu).2
+  · unfold gateSet at hu
+    cases hg : S.gate with
+    | demand       => rw [hg] at hu; exact (mem_πᵤK.mp hu).2
+    | materialized => rw [hg] at hu; exact (mem_ηₘK.mp hu).2
   · exact (mem_τᵤK.mp (mem_insertBefore.mp (Assignments.mem_toList.2 hib)).2).2
 
 /-! ## The block-level insert executor

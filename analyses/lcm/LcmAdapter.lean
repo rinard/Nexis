@@ -1,5 +1,6 @@
 -- Copyright (c) 2026 Martin Rinard
 import Generated.Seam.lcm.ValidExtremal
+import Generated.Seam.lcmmat.ValidExtremal
 
 /-!
 # `LCM.LcmAdapter` — the `LcmSpec` validity bundle (adapter over the generated interface).
@@ -18,6 +19,38 @@ ghost predicates + defs/placements.
 
 namespace BaseLanguage.Analyses.LCM
 open Tac Semantics Std
+
+/-- **Which ghost the transform's replace gate reads.** The two settings are the point of this
+    development, and both are shipped and proved.
+
+    * `.demand` — the classical KRS gate, `recoverable = πᵤK ∪ insertBefore`. `πᵤ` is a **least**
+      fixpoint, so keeping the gate honest means knowing `πᵤ` is not *too large*, which is a lower bound
+      on a least solution: irreducibly second-order, expressible by no clause, and therefore assumable
+      only as `Extremal S`. `examples/lcm-extremality/ExtremalityNeeded.lean` exhibits a valid but
+      non-extremal bundle under which this gate reads a temporary nothing ever wrote.
+    * `.materialized` — `recoverable = ηₘK ∪ insertBefore`, reading the seventh ghost of
+      `analyses/lcmmat/LcmMat.gsl`. `Materialized`'s clause is an **upper** bound, which *is* the
+      soundness statement, so this gate needs only the bundle's **validity**.
+
+    Both gates emit the same code on an extremal bundle (`GateComplete`, measured in
+    `examples/lcm-materialized/MatGate.lean`); they differ in what correctness costs. Like `keep`, this
+    field appears in **no validity clause and no extremality clause**, so re-aiming it
+    (`LcmSpec.withGate`) cannot invalidate a bundle. -/
+inductive GateMode where
+  /-- Read the backward demand ghost `πᵤ`. Correct only for an extremal bundle. -/
+  | demand
+  /-- Read the forward materialization ghost `ηₘ`. Correct for any valid bundle. -/
+  | materialized
+  deriving DecidableEq, Repr, Inhabited
+
+def GateMode.ofString? : String → Option GateMode
+  | "demand" | "used" | "classic" => some .demand
+  | "mat" | "materialized"        => some .materialized
+  | _                             => none
+
+def GateMode.name : GateMode → String
+  | .demand       => "demand"
+  | .materialized => "materialized"
 
 structure LcmSpec (P : Program) where
   πₐ    : Node → Assignments
@@ -40,12 +73,23 @@ structure LcmSpec (P : Program) where
       covered by the *same* correctness theorems, quantified as they are over an arbitrary valid,
       extremal bundle, with no second development and no second solver. -/
   keep : Expr → Bool := fun _ => true
+  /-- **Which ghost the replace gate reads** (`GateMode`). Like `keep`, it appears in no validity and no
+      extremality clause, so `LcmSpec.withGate` re-aims it for free. The default is the gate whose
+      correctness proof needs no side condition. -/
+  gate : GateMode := .materialized
   isAnti    : Anticipated P πₐ
   isAvail   : Available P ηₐ
   isPostp   : Postponable P πₐ ηₐ ηₚ
   isTauP    : Transfer Assignments.Subset P ηₚ τₚ
   isUsed    : Used P (latestNode P ηₚ τₚ) (latestEdge P πₐ ηₐ ηₚ) πᵤ
   isUsedOut : Transfer Assignments.Sup P πᵤ τᵤ
+  /-- **Availability of the hoisting temp in the *transformed* program** — the seventh ghost
+      (`analyses/lcmmat/LcmMat.gsl`). Its governing clause `isMat` is an **upper** bound, so it is a
+      consequence of validity rather than of extremality, which is the whole reason it is here: the
+      replace gate reads it (`Transform.recoverable`), and a gate that reads an upper-bounded ghost does
+      not need the bundle to be extremal. -/
+  ηₘ : Node → Assignments
+  isMat     : LcmMat.Materialized P πₐ ηₐ ηₚ τₚ τᵤ ηₘ
 
 structure Extremal {P : Program} (S : LcmSpec P) : Prop where
   πₐ    : ∀ g, Anticipated P g → ∀ n, (g n).Subset (S.πₐ n)
@@ -55,9 +99,27 @@ structure Extremal {P : Program} (S : LcmSpec P) : Prop where
   πᵤ    : ∀ g, Used P (latestNode P S.ηₚ S.τₚ) (latestEdge P S.πₐ S.ηₐ S.ηₚ) g → ∀ n, (S.πᵤ n).Subset (g n)
   τᵤ : ∀ g, Transfer Assignments.Sup P S.πᵤ g → ∀ n, (S.τᵤ n).Subset (g n)
 
-/-- Re-aim a bundle's hoisting filter. The six ghosts and every witness are untouched. -/
+/-- **Greatest-ness of the seventh ghost**, kept apart from `Extremal` on purpose.
+
+    A six-ghost bundle (`analyses/lcm/Lcm.gsl`) is a perfectly good `Extremal` `LcmSpec` — it just has no
+    solved `ηₘ` to be greatest, so it satisfies this and only this clause vacuously-falsely. Folding `ηₘ`
+    into `Extremal` would therefore have cost `LCM.lcmSolved` its extremality, and with it the classical
+    `.demand` gate's correctness proof.
+
+    Nothing in **correctness** reads this, under either gate. What reads it is `demand_materialized`:
+    that the `.materialized` gate admits everything the `.demand` gate did, which is the *optimality*
+    half of the swap. -/
+structure ExtremalMat {P : Program} (S : LcmSpec P) : Prop where
+  ηₘ : ∀ g, LcmMat.Materialized P S.πₐ S.ηₐ S.ηₚ S.τₚ S.τᵤ g → ∀ n, (g n).Subset (S.ηₘ n)
+
+/-- Re-aim a bundle's hoisting filter. The seven ghosts and every witness are untouched. -/
 def LcmSpec.withKeep {P : Program} (S : LcmSpec P) (f : Expr → Bool) : LcmSpec P :=
   { S with keep := f }
+
+/-- Re-aim a bundle's **replace gate**. The seven ghosts and every witness are untouched, exactly as for
+    `withKeep` — which is what lets one transform and one bundle carry both gates. -/
+def LcmSpec.withGate {P : Program} (S : LcmSpec P) (g : GateMode) : LcmSpec P :=
+  { S with gate := g }
 
 @[simp] theorem withKeep_keep {P : Program} (S : LcmSpec P) (f : Expr → Bool) :
     (S.withKeep f).keep = f := rfl
@@ -67,6 +129,18 @@ def LcmSpec.withKeep {P : Program} (S : LcmSpec P) (f : Expr → Bool) : LcmSpec
 @[simp] theorem withKeep_τₚ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).τₚ = S.τₚ := rfl
 @[simp] theorem withKeep_πᵤ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).πᵤ = S.πᵤ := rfl
 @[simp] theorem withKeep_τᵤ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).τᵤ = S.τᵤ := rfl
+@[simp] theorem withKeep_ηₘ {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).ηₘ = S.ηₘ := rfl
+@[simp] theorem withKeep_gate {P : Program} (S : LcmSpec P) (f) : (S.withKeep f).gate = S.gate := rfl
+
+@[simp] theorem withGate_gate {P : Program} (S : LcmSpec P) (g) : (S.withGate g).gate = g := rfl
+@[simp] theorem withGate_keep {P : Program} (S : LcmSpec P) (g) : (S.withGate g).keep = S.keep := rfl
+@[simp] theorem withGate_πₐ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).πₐ = S.πₐ := rfl
+@[simp] theorem withGate_ηₐ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).ηₐ = S.ηₐ := rfl
+@[simp] theorem withGate_ηₚ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).ηₚ = S.ηₚ := rfl
+@[simp] theorem withGate_τₚ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).τₚ = S.τₚ := rfl
+@[simp] theorem withGate_πᵤ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).πᵤ = S.πᵤ := rfl
+@[simp] theorem withGate_τᵤ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).τᵤ = S.τᵤ := rfl
+@[simp] theorem withGate_ηₘ {P : Program} (S : LcmSpec P) (g) : (S.withGate g).ηₘ = S.ηₘ := rfl
 
 /-! ### The filtered demand ghosts
 
@@ -77,8 +151,11 @@ ghosts themselves (and hence every validity and extremality witness) are untouch
 /-- `τᵤ` restricted to the hoistable expressions — the gate on every insert set. -/
 def LcmSpec.τᵤK {P : Program} (S : LcmSpec P) (n : Node) : Assignments := (S.τᵤ n).filter S.keep
 
-/-- `πᵤ` restricted to the hoistable expressions — the upstream half of the replace gate. -/
+/-- `πᵤ` restricted to the hoistable expressions — the upstream half of the *classical* replace gate. -/
 def LcmSpec.πᵤK {P : Program} (S : LcmSpec P) (n : Node) : Assignments := (S.πᵤ n).filter S.keep
+
+/-- `ηₘ` restricted to the hoistable expressions — the upstream half of the replace gate. -/
+def LcmSpec.ηₘK {P : Program} (S : LcmSpec P) (n : Node) : Assignments := (S.ηₘ n).filter S.keep
 
 theorem mem_τᵤK {P : Program} {S : LcmSpec P} {n : Node} {e : Expr} :
     e ∈ S.τᵤK n ↔ e ∈ S.τᵤ n ∧ S.keep e = true := Analysis.SetOps.mem_filter'
@@ -92,9 +169,58 @@ theorem τᵤK_sub {P : Program} (S : LcmSpec P) (n : Node) : (S.τᵤK n).Subse
 theorem πᵤK_sub {P : Program} (S : LcmSpec P) (n : Node) : (S.πᵤK n).Subset (S.πᵤ n) :=
   fun _ h => (mem_πᵤK.mp h).1
 
+theorem mem_ηₘK {P : Program} {S : LcmSpec P} {n : Node} {e : Expr} :
+    e ∈ S.ηₘK n ↔ e ∈ S.ηₘ n ∧ S.keep e = true := Analysis.SetOps.mem_filter'
+
+theorem ηₘK_sub {P : Program} (S : LcmSpec P) (n : Node) : (S.ηₘK n).Subset (S.ηₘ n) :=
+  fun _ h => (mem_ηₘK.mp h).1
+
+/-! ### The filter travels through the materialization clause
+
+`isMat` is stated over the *unfiltered* `τᵤ`, because `keep` appears in no clause of any ghost — that is
+what makes `withKeep` free. The transform, though, places only what survives the filter, so the gate must
+read the *filtered* `ηₘK`. `isMatK` is the bridge: filtering the ghost by `keep` re-establishes the very
+same clause over the filtered `τᵤK`.
+
+It goes through because `keep` simply travels along each disjunct. `matPlace` gates on `τᵤ` by
+intersection, so an `e` in it with `keep e` is in the `τᵤK`-gated one; and the carry `∖ notPass` does not
+touch membership in `keep` at all. No monotonicity of the solver, and no extremality, is involved. -/
+
+theorem LcmSpec.isMatK {P : Program} (S : LcmSpec P) :
+    LcmMat.Materialized P S.πₐ S.ηₐ S.ηₚ S.τₚ S.τᵤK S.ηₘK where
+  update := by
+    intro c c' hstep e he
+    obtain ⟨heη, hk⟩ := mem_ηₘK.mp he
+    rcases Assignments.mem_union.mp (S.isMat.update c c' hstep e heη) with hpl | hcarry
+    · refine Assignments.mem_union.mpr (Or.inl ?_)
+      rcases Assignments.mem_union.mp hpl with hE | hN
+      · obtain ⟨hlat, hτ⟩ := Assignments.mem_inter.mp hE
+        exact Assignments.mem_union.mpr (Or.inl
+          (Assignments.mem_inter.mpr ⟨hlat, mem_τᵤK.mpr ⟨hτ, hk⟩⟩))
+      · obtain ⟨hng, hpass⟩ := Assignments.mem_inter.mp hN
+        obtain ⟨hdiff, hτ⟩ := Assignments.mem_inter.mp hng
+        exact Assignments.mem_union.mpr (Or.inr (Assignments.mem_inter.mpr
+          ⟨Assignments.mem_inter.mpr ⟨hdiff, mem_τᵤK.mpr ⟨hτ, hk⟩⟩, hpass⟩))
+    · obtain ⟨hb, hnp⟩ := Assignments.mem_sdiff.mp hcarry
+      exact Assignments.mem_union.mpr (Or.inr
+        (Assignments.mem_sdiff.mpr ⟨mem_ηₘK.mpr ⟨hb, hk⟩, hnp⟩))
+  seed := fun e he => S.isMat.seed e (ηₘK_sub S P.entry e he)
+  within := fun n e he => S.isMat.within n e (ηₘK_sub S n e he)
+
 /-- Extremality is a statement about the six ghosts only, so it survives re-aiming the filter. -/
 theorem Extremal.withKeep {P : Program} {S : LcmSpec P} (hS : Extremal S) (f : Expr → Bool) :
     Extremal (S.withKeep f) :=
   ⟨hS.πₐ, hS.ηₐ, hS.ηₚ, hS.τₚ, hS.πᵤ, hS.τᵤ⟩
+
+/-- Extremality survives re-aiming the gate, for the same reason: `gate` is in no clause. -/
+theorem Extremal.withGate {P : Program} {S : LcmSpec P} (hS : Extremal S) (g : GateMode) :
+    Extremal (S.withGate g) :=
+  ⟨hS.πₐ, hS.ηₐ, hS.ηₚ, hS.τₚ, hS.πᵤ, hS.τᵤ⟩
+
+theorem ExtremalMat.withKeep {P : Program} {S : LcmSpec P} (hM : ExtremalMat S) (f : Expr → Bool) :
+    ExtremalMat (S.withKeep f) := ⟨hM.ηₘ⟩
+
+theorem ExtremalMat.withGate {P : Program} {S : LcmSpec P} (hM : ExtremalMat S) (g : GateMode) :
+    ExtremalMat (S.withGate g) := ⟨hM.ηₘ⟩
 
 end BaseLanguage.Analyses.LCM

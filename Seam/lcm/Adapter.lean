@@ -30,9 +30,24 @@ def lcmSolved (P : Program) (wf : WellFormed P) : LcmSpec P :=
     isPostp   := ηₚSol_valid P wf
     isTauP    := τₚSol_valid P wf
     isUsed    := πᵤSol_valid P wf
-    isUsedOut := τᵤSol_valid P wf }
+    isUsedOut := τᵤSol_valid P wf
+    -- `Lcm.gsl` has six ghosts, so there is no solved `ηₘ` here; the empty set is a valid
+    -- `Materialized` (every clause is an upper bound, and `∅` satisfies each vacuously). It is *not*
+    -- the greatest one, so this bundle satisfies no `ExtremalMat` and would replace nothing under the
+    -- `.materialized` gate — which is why it ships `.demand`. The seventh ghost is
+    -- `LcmMat.lcmMatSolved`.
+    ηₘ        := fun _ => Assignments.empty
+    -- no seventh ghost to read, so this bundle ships the classical gate — which it can afford, being
+    -- extremal (`lcmSolved_extremal` below)
+    gate      := .demand
+    isMat     := ⟨fun _ _ _ _ he => absurd he Std.HashSet.not_mem_empty,
+                  fun _ he => absurd he Std.HashSet.not_mem_empty,
+                  fun _ _ he => absurd he Std.HashSet.not_mem_empty⟩ }
 
-/-- …and it is extremal — the `Extremal` predicate the optimality development consumes. -/
+/-- …and it is extremal in the six classical ghosts — the `Extremal` predicate the classical `.demand`
+    gate's correctness proof and the optimality development both consume. The seventh ghost's
+    greatest-ness (`ExtremalMat`) is a separate predicate precisely so that this bundle, which has no
+    seventh ghost, can still be `Extremal`. -/
 theorem lcmSolved_extremal (P : Program) (wf : WellFormed P) : Extremal (lcmSolved P wf) where
   πₐ    := πₐ_greatest P wf
   ηₐ   := ηₐ_greatest P wf

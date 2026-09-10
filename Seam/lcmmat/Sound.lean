@@ -31,9 +31,16 @@ fuel, no analysis domain).
 `matAvail_written` is the *analysis-level* half of soundness: it discharges the obligation that made
 extremality necessary. The remaining half is store-level and orthogonal — that a placed temporary actually
 holds its expression's value, which is the block-execution reasoning (`matNode_execF`, `steps_insSeg`) the
-existing development already carries and which never depended on extremality. Wiring the two together is
-the `Cov`/`Match` rebuild; that is not done here, and `BaseLanguage/LCM/Transform.lean` still uses the
-classical gate.
+existing development already carries and which never depended on extremality.
+
+Wiring the two together is the `Cov`/`Match` layer, and that **is** now done, in
+`BaseLanguage/LCM/Correctness/{Coverage,MatchStep}.lean`: under `GateMode.materialized` the transform's
+`recoverable` reads `ηₘK`, `covSet` is `ηₘK`, and `gateSound_materialized` discharges the whole
+`GateSound` obligation from validity — so `transform_preserves_halt_mat` takes no `Extremal`. The
+correctness chain reaches that conclusion through `LcmSpec.isMatK` rather than through this file, because
+it needs the `keep`-filtered form and therefore no `hkeep` side condition; what this file adds is the
+same statement in the transform's own `insertEdge`/`insertBefore` vocabulary, phrased over the *solved*
+bundle, and the phase-split obligation `mem_matPlace_iff` that makes `matPlace` mean what its name says.
 -/
 
 namespace BaseLanguage.Analyses.LcmMat

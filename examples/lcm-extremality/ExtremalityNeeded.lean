@@ -2,14 +2,20 @@
 import BaseLanguage.LCM.Mode
 import BaseLanguage.IR.Pretty
 import Seam.lcm.Adapter
+import Seam.lcmmat.Adapter
 
 /-!
-# Why LCM correctness needs an *extremal* bundle, not merely a valid one
+# Why the LCM replace gate could not read `πᵤ` — and what reading `ηₘ` instead buys
 
-`LCM.transform_preserves_halt` assumes `Extremal S` as well as validity, while
-`PDCE.transform_preserves_halt` needs only validity. That asymmetry is real, and this file exhibits it:
+`PDCE.transform_preserves_halt` needs only a **valid** bundle. `LCM.transform_preserves_halt` needs only
+a valid bundle too — *provided* the transform's replace gate is `LCM.GateMode.materialized`. Under the
+classical `.demand` gate it needs an **extremal** one, and this file is the counterexample that says why:
 a bundle that satisfies **every** validity clause of **every** ghost, is provably **not** extremal, and
-whose transform computes the wrong answer.
+under the `.demand` gate computes the wrong answer.
+
+Both gates are shipped and both are proved (`transform_preserves_halt_demand` vs
+`transform_preserves_halt_mat`), so the two transforms below are the *same* verified transform run over
+the *same* bundle, differing in one field.
 
 ## Why a valid-but-not-extremal bundle exists at all
 
@@ -24,17 +30,35 @@ lower bound anywhere is `Used.check`. So:
 
 Validity is therefore a genuinely weaker property than extremality, and the gap is not subtle.
 
-## What goes wrong
+## What goes wrong under `.demand`
 
 The transform reads the bundle in two places that must agree:
 
 * it **inserts** `t := e` where `e ∈ insertBefore`/`insertEdge`, both gated by `latestNode`/`latestEdge`,
   which are computed from `πₐ`, `ηₚ`, `τₚ`; and
-* it **replaces** an original `x := e` by `x := t` where `e ∈ recoverable = πᵤ ∪ insertBefore`.
+* it **replaces** an original `x := e` by `x := t` where `e ∈ recoverable`.
 
-Extremality is what keeps those two in step. Collapse the first group and inflate the second, and the
-transform replaces every numbered computation with a read of a temporary it never materialized. The
-program below then reads an unwritten temporary and observes `0` where the source observes `7`.
+Under `.demand` the gate is `πᵤK ∪ insertBefore`. Collapse the first group and inflate the second, and it
+replaces every numbered computation with a read of a temporary it never materialized. Extremality is what
+keeps the two in step — and it has to be *assumed*, because keeping `πᵤ` from being too large is a
+**lower** bound on a **least** fixpoint, which no clause can express.
+
+## What `.materialized` changes
+
+Under `.materialized` the gate is `ηₘK ∪ insertBefore`, reading the seventh ghost of
+`analyses/lcmmat/LcmMat.gsl`. `Materialized`'s clause is an **upper** bound — everything it admits at a
+node was placed on the way in or survived from the predecessor — so it *is* the soundness statement, and
+validity suffices.
+
+`Sbad` below still satisfies every validity clause and is still not extremal. Run through the `.demand`
+gate it miscompiles; run through `.materialized` it does not. The `#eval` shows both, and shows the gates'
+decisions side by side at the node that computes `a + b`.
+
+That `Sbad` compiles *correctly* under `.materialized` is not the same as compiling *well*: its `ηₘ = ∅`
+costs it every lazy replacement, which is an optimality loss and belongs exactly there.
+`demand_materialized` proves that for an *extremal* bundle the `.materialized` gate admits everything the
+`.demand` gate did, so on a real analysis the choice costs nothing — see
+`examples/lcm-materialized/MatGate.lean`.
 -/
 
 open BaseLanguage BaseLanguage.Tac BaseLanguage.Semantics BaseLanguage.Analyses.LCM
@@ -78,11 +102,12 @@ theorem P0_wf : WellFormed P0 where
           simp only [P0, Program.fetch]; exact Array.getElem?_eq_none (by simp)
         rw [hnone] at hf; simp at hf
 
-/-- The solved bundle: valid **and** extremal. -/
-def Sgood : LcmSpec P0 := lcmSolved P0 P0_wf
+/-- The solved seven-ghost bundle: valid **and** extremal. -/
+def Sgood : LcmSpec P0 := BaseLanguage.Analyses.LcmMat.lcmMatSolved P0 P0_wf
 
 /-- **A valid bundle that is not extremal.** Each witness below discharges the ghost's clauses; every one
-    of them is an upper bound satisfied by `∅`, or a lower bound satisfied by the universe. -/
+    of them is an upper bound satisfied by `∅`, or a lower bound satisfied by the universe. `ηₘ := ∅` is
+    valid for the same reason `πₐ := ∅` is: `Materialized`'s three clauses are all upper bounds. -/
 def Sbad : LcmSpec P0 :=
   { Sgood with
     πₐ := fun _ => (∅ : Assignments)
@@ -102,7 +127,11 @@ def Sbad : LcmSpec P0 :=
     isUsed  := ⟨fun _ _ _ e he => Assignments.mem_union.mpr (Or.inl he),
                 fun n e he => ue_mem_allExprs (Assignments.mem_sdiff.mp he).1,
                 fun _ e he => he⟩
-    isUsedOut := ⟨fun _ _ _ e he => he, fun _ e he => he⟩ }
+    isUsedOut := ⟨fun _ _ _ e he => he, fun _ e he => he⟩
+    ηₘ := fun _ => (∅ : Assignments)
+    isMat := ⟨fun _ _ _ e he => absurd he Std.HashSet.not_mem_empty,
+              fun e he => absurd he Std.HashSet.not_mem_empty,
+              fun _ e he => absurd he Std.HashSet.not_mem_empty⟩ }
 
 /-- **`ue` is itself a valid `Anticipated`.** Locally computed expressions are anticipated where they are
     computed, and the `predict` obligation is vacuous because every element is killed at its own node. This
@@ -128,8 +157,10 @@ theorem E_mem_ue : E ∈ ue P0 1 := by
 theorem Sbad_not_extremal : ¬ Extremal Sbad := fun h =>
   absurd (h.πₐ (ue P0) ue_anticipated 1 E E_mem_ue) Std.HashSet.not_mem_empty
 
+/-- The same bad bundle, under each gate. One field differs; nothing else does. -/
 def Tgood : Program := transform P0 Sgood
-def Tbad  : Program := transform P0 Sbad
+def TbadDemand : Program := transform P0 (Sbad.withGate .demand)
+def TbadMat    : Program := transform P0 (Sbad.withGate .materialized)
 
 /-- `a = 3`, `b = 4`, so the source observes `y = 7`. -/
 def sigma0 : Store := fun v => if v = va then 3 else if v = vb then 4 else 0
@@ -145,9 +176,19 @@ def observe (Q : Program) : String :=
   IO.println "----- source -----"
   IO.println (ppProgram P0)
   IO.println s!"  observes: {observe P0}"
-  IO.println "----- transform with the VALID and EXTREMAL bundle -----"
+  IO.println "----- VALID and EXTREMAL bundle (either gate) -----"
   IO.println (ppProgram Tgood)
   IO.println s!"  observes: {observe Tgood}"
-  IO.println "----- transform with the VALID but NOT EXTREMAL bundle -----"
-  IO.println (ppProgram Tbad)
-  IO.println s!"  observes: {observe Tbad}   <-- WRONG: reads a temporary never materialized"
+  IO.println "----- VALID but NOT EXTREMAL bundle, gate = .demand -----"
+  IO.println (ppProgram TbadDemand)
+  IO.println s!"  observes: {observe TbadDemand}   <-- WRONG: reads a temporary never materialized"
+  IO.println "----- VALID but NOT EXTREMAL bundle, gate = .materialized -----"
+  IO.println (ppProgram TbadMat)
+  IO.println s!"  observes: {observe TbadMat}   <-- correct: the gate declined the rewrite"
+  IO.println ""
+  IO.println "----- the two gates at node 1 (`y := a + b`), on the NOT-extremal bundle -----"
+  IO.println s!"  .demand        (πᵤK ∪ insertBefore) admits a+b : \
+{(recoverable P0 (Sbad.withGate .demand) 1).contains E}   <-- the unsound rewrite"
+  IO.println s!"  .materialized  (ηₘK ∪ insertBefore) admits a+b : \
+{(recoverable P0 (Sbad.withGate .materialized) 1).contains E}"
+  IO.println "  Nothing about Sbad changed: it is the gate's polarity that did."

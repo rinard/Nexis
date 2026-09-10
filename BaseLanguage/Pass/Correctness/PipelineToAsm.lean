@@ -35,14 +35,14 @@ The composition chains the forward-simulation results:
 * `AstToTac.lower_correct`         (frontend)         — `evalS … = .ok σ'` ⟹ `lower s` halts ≈ `σ'` on origs
 * `Normalize.normalize_preserves_halt`                 — normal-form pre-passes preserve the halting run
 * `Pass.iterateOpt_preserves_halt`                     — the const-prop round preserves it
-* `Analyses.LCM.transform_preserves_halt`                    — PRE preserves it (extremal bundle)
+* `Analyses.LCM.transform_preserves_halt`                    — PRE preserves it (any valid bundle)
 * `Analyses.PDCE.transform_preserves_halt`                   — PDCE preserves it (any valid bundle)
 * `TacToAsm.codegen_simulates`     (backend)           — IR halt ⟹ ARM64 halt with the matching frame
 
 The agreement is on the program's **observables** `(lower s).obs` (the source variables that occur in
-`s`) — the optimizers only preserve observables, by design. It is stated for an *extremal* LCM bundle
-`Slcm` (LCM correctness needs down-safety) and an *arbitrary valid* PDCE bundle `Spdce`, so it does **not**
-depend on the (still-stubbed) dataflow `solve`.
+`s`) — the optimizers only preserve observables, by design. It is stated for an **arbitrary valid** LCM
+bundle `Slcm` and an arbitrary valid PDCE bundle `Spdce`, so it does **not** depend on the concrete
+`solve` — and, since the gate swap, not on extremality either.
 -/
 
 namespace AstToTac
@@ -61,10 +61,21 @@ theorem wn_preOpt (s : Stmt) : WellNormalized (normalize (Peephole.peephole (low
     program produced by the whole pipeline
     `codegen ∘ cleanup ∘ PDCE ∘ LCM ∘ normalize ∘ iterateOpt ∘ normalize ∘ peephole ∘ lower` runs from
     its initial state to a `halted` machine state whose frame holds `σ'`'s value (under `encode`) for
-    every observable source variable. Holds for any valid PDCE bundle and any **extremal** LCM bundle —
-    LCM placement correctness (isolation / no-reinsertion) is proved from the ghosts being the extremal
-    KRS solution, so `Extremal Slcm` is required here, whereas PDCE sinking is correct for any valid
-    bundle.
+    every observable source variable.
+
+    The LCM hypothesis is `LCM.GateSound` — the single obligation the replace gate owes the simulation,
+    and *all* the LCM correctness development consumes. Taking it directly, rather than a disjunction
+    resolved here, is deliberate: it keeps the two gates' proofs genuinely disjoint, so a caller that
+    discharges it one way never depends on the other way's machinery. What each way costs:
+
+    * `LCM.gateSound_materialized` — the gate reads the materialization ghost `ηₘ`, whose governing
+      clause is an *upper* bound, so the obligation follows from the bundle's **validity** alone;
+    * `LCM.gateSound_demand` — the gate reads the *least* demand ghost `πᵤ`, and "a least fixpoint is
+      not too large" is a lower bound no clause can express, so this way additionally needs
+      `Extremal Slcm` and the `prependEntry` `noop` entry.
+
+    Both settings are shipped, both emit the same code on an extremal bundle, and they differ only in
+    what correctness costs. See `Compile.main_compile_correct` / `main_compile_correct_demand`.
 
     `wfPre` is a parameter only so the statement can *name* the witness `iterateOpt` consumes; it is
     derivable (`(wn_preOpt s).wf`), and `WellFormed` is a `Prop`, so any two choices agree. -/
@@ -75,7 +86,8 @@ theorem pipeline_to_asm (s : Stmt) (fuel : Nat) (σ' : Store)
     (wfPre : WellFormed (normalize (Peephole.peephole (lower s))))
     (Slcm : Analyses.LCM.LcmSpec
       (normalize (Pass.iterateOpt prov N (normalize (Peephole.peephole (lower s))) wfPre)))
-    (hLcm : Analyses.LCM.Extremal Slcm)
+    (hLcm : Analyses.LCM.GateSound
+      (normalize (Pass.iterateOpt prov N (normalize (Peephole.peephole (lower s))) wfPre)) Slcm)
     (Spdce : Analyses.PDCE.PdceSpec (Analyses.LCM.transform
       (normalize (Pass.iterateOpt prov N (normalize (Peephole.peephole (lower s))) wfPre)) Slcm)) :
     let Pn := normalize (Peephole.peephole (lower s))
@@ -114,9 +126,8 @@ theorem pipeline_to_asm (s : Stmt) (fuel : Nat) (σ' : Store)
   -- ④ re-normalize (a second entry `noop`; `cleanup` removes it)
   obtain ⟨cf2, hsteps2, hfin2, ho2⟩ := normalize_preserves_halt hwfPi hobsPi hstepsOpt hfinOpt
   -- ⑤ LCM (PRE)
-  obtain ⟨ne, hen⟩ := normalize_entry_noop Pi
   obtain ⟨cf3, hsteps3, hfin3, ho3⟩ :=
-    Analyses.LCM.transform_preserves_halt Slcm hLcm hwn hen hobsPi hsteps2 hfin2
+    Analyses.LCM.transform_preserves_halt Slcm hLcm hwn hobsPi hsteps2 hfin2
   rw [← Analyses.LCM.transform_entry Slcm] at hsteps3
   -- ⑥ PDCE
   obtain ⟨cf4, hsteps4, hfin4, ho4⟩ :=

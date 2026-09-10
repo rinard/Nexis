@@ -124,7 +124,13 @@ regenerating produces byte-identical files.
   `sorry`-free under a well-formedness precondition that normalization establishes
   unconditionally).
 - **The optimizations.** Behavior preservation and optimality of the LCM and PDCE
-  transforms, over an arbitrary valid extremal analysis result.
+  transforms, over an arbitrary valid extremal analysis result. LCM additionally ships
+  **two replace gates**, selected by `--lcm-gate` and both proved: the classical `.demand`
+  gate reads the *least* ghost `πᵤ` and needs `Extremal S`; the `.materialized` gate reads
+  the seventh ghost `ηₘ`, whose governing clause is an *upper* bound, and needs only the
+  bundle's **validity**. Same emitted code, different hypotheses — see
+  `BaseLanguage/LCM/Transform.lean`, `examples/lcm-extremality/` and
+  `examples/lcm-materialized/`.
 - **Instruction selection** into an operational model of an AArch64 subset
   (`codegen_simulates`).
 - **Assembler encoding** (`AsmEnc`): the emitter that turns modelled instructions into

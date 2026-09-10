@@ -140,27 +140,28 @@ theorem replace_covered_basic (S : LcmSpec P) {nd : Node} {x : Var} {e0 : Expr} 
 
 /-! ## The coverage crux: `Cov ⇒ Cov_basic`, and maintenance by reuse -/
 
-/-- **`Cov_basic` follows from `Cov`.** Case `e ∈ used`: use `Cov` (insert containments discharge the
-    `∉ insertBefore`/`∉ insertOut` sides). Case `e ∉ πᵤ`: the `Used.check` clause forces `e ∈ latestNode`,
-    and `e ∉ insOut' = latestOut` puts it in `insBefore'` — contradicting the hypothesis. -/
-theorem cov_implies_cov_basic (S : LcmSpec P) {n : Node} {M : Assignments}
+/-- **`Cov_basic` follows from `Cov`.** A basic-covered computation `e` is not on the node's own latest
+    frontier (else `e ∉ insOut' = latestOut` would put it in `insBefore'`), so `Used.check` demands it:
+    `e ∈ ue ∖ latestNode ⊆ πᵤ`. The insert containments then place it in `demandSet`, and
+    `demand_materialized` carries that into `ηₘ` — which is what the new `Cov` covers.
+
+    Stated over `GateComplete`, so it runs under either `GateMode`: under `.demand` that hypothesis is
+    definitional and this is the classical argument verbatim; under `.materialized` it is
+    `gateComplete_materialized`, which supplies the extra containment from `ExtremalMat`. -/
+theorem cov_implies_cov_basic (S : LcmSpec P) (hgc : GateComplete S) {n : Node} {M : Assignments}
     (hcov : Cov S n M) : Cov_basic S n M := by
   intro e he
   rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
   obtain ⟨⟨hueK, hnib'⟩, hnio'⟩ := he
   have hkeep : S.keep e = true := (Analysis.SetOps.mem_filter'.mp hueK).2
   have hue : e ∈ ue P n := (Analysis.SetOps.mem_filter'.mp hueK).1
-  by_cases hused : e ∈ S.πᵤ n
-  · exact hcov e (Assignments.mem_sdiff.mpr
-      ⟨Assignments.mem_sdiff.mpr ⟨mem_πᵤK.mpr ⟨hused, hkeep⟩,
-        fun hib => hnib' (insertBefore_sub_insBefore' S n e hib)⟩,
-       fun hio => hnio' (insertOut_sub_insOut' S n e hio)⟩)
-  · have hln : e ∈ latestNode P S.ηₚ S.τₚ n := by
-      by_cases h : e ∈ latestNode P S.ηₚ S.τₚ n
-      · exact h
-      · exact absurd (S.isUsed.check n e (Assignments.mem_sdiff.mpr ⟨hue, h⟩)) hused
-    exact absurd (Analysis.SetOps.mem_filter'.mpr
-      ⟨Assignments.mem_sdiff.mpr ⟨hln, hnio'⟩, hkeep⟩) hnib'
+  have hnln : e ∉ latestNode P S.ηₚ S.τₚ n := fun hln =>
+    hnib' (Analysis.SetOps.mem_filter'.mpr ⟨Assignments.mem_sdiff.mpr ⟨hln, hnio'⟩, hkeep⟩)
+  have hdem : e ∈ demandSet S n := mem_demandSet.mpr
+    ⟨⟨mem_πᵤK.mpr ⟨S.isUsed.check n e (Assignments.mem_sdiff.mpr ⟨hue, hnln⟩), hkeep⟩,
+      fun hib => hnib' (insertBefore_sub_insBefore' S n e hib)⟩,
+     fun hio => hnio' (insertOut_sub_insOut' S n e hio)⟩
+  exact hcov e (hgc n e hdem)
 
 /-- `Cov` is monotone in `M`. -/
 theorem cov_mono (S : LcmSpec P) {n : Node} {M M' : Assignments}
@@ -188,10 +189,11 @@ theorem mstep_edge_sub (S : LcmSpec P) (c c' : Node) (M : Assignments) :
 
 /-- **Basic coverage maintenance.** Basic coverage is maintained across a step, by reusing `Cov_step_edge`.
     Keeps `Extremal S` as a scaffold; the basic transform output uses no `π_u`. -/
-theorem Cov_basic_step (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) {c c' : Config} {M : Assignments}
+theorem Cov_basic_step (S : LcmSpec P) (hg : GateSound P S) (hgc : GateComplete S)
+    {c c' : Config} {M : Assignments}
     (hstep : Step P c c') (hcov : Cov S c.node M) :
     Cov_basic S c'.node (Mstep_edge' S c.node c'.node M) :=
-  cov_implies_cov_basic S
-    (cov_mono S (Cov_step_edge S hS wn hstep hcov) (mstep_edge_sub S c.node c'.node M))
+  cov_implies_cov_basic S hgc
+    (cov_mono S (Cov_step_edge S hg hstep hcov) (mstep_edge_sub S c.node c'.node M))
 
 end BaseLanguage.Analyses.LCM

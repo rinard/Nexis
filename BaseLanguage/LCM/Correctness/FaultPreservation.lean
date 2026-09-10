@@ -17,7 +17,7 @@ it), so the target block must recompute `e0` and faults — caught by the fault-
     already faults, or it completes at the control slot, where the control necessarily keeps the original
     `x := e0` (the rewrite gate is excluded, since `replace_covered` would give `e0` a value contradicting
     `eval σ e0 = none`), and that control faults. -/
-theorem match_faulting {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+theorem match_faulting {P : Program} (S : LcmSpec P) (hg : GateSound P S)
     {c d : Config} {M : Assignments}
     (hm : Match P S c d M) (hcov : Cov S c.node M) (hflt : Faulting P c) :
     ∃ df, Steps (transform P S) d df ∧ Faulting (transform P S) df := by
@@ -56,7 +56,7 @@ theorem match_faulting {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
         exfalso
         rw [Bool.and_eq_true] at h
         have hrecov : e0 ∈ recoverable P S nd := Std.HashSet.contains_iff_mem.mp h.2
-        rcases replace_covered S wn hf h.1 hrecov hcov with hM | hia
+        rcases replace_covered S hg hf h.1 hrecov hcov with hM | hia
         · have := Holds_iff.1 (hHolds e0 hM); rw [hnone] at this; exact absurd this (by simp)
         · have := hon1 e0 (Assignments.mem_toList.2 hia)
           rw [eval_eq_of_nonFresh_agree (insertBefore_mem_allExprs (Assignments.mem_toList.2 hia)) hagree,
@@ -150,7 +150,7 @@ set_option maxHeartbeats 400000 in
 /-- **`match_step_ifz_fault` — `match_step_fault`'s `ifz` case.** Either the entry chain or the taken edge chain faults (→ target
     `Faulting`), or the branch completes cleanly (`match_step_ifz` + `Cov_step_edge`). The edge chain is run
     fault-aware via `steps_exitSeg_fault`; a clean edge run contradicts the fault witness `hX`. -/
-theorem match_step_ifz_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+theorem match_step_ifz_fault {P : Program} (S : LcmSpec P) (hg : GateSound P S)
     {nd : Node} {x : Var} {z nz succ : Node} {σ dσ : Store} {M : Assignments}
     (hf : P.fetch nd = some (.ifz x z nz))
     (hcond : (σ x = 0 ∧ succ = z) ∨ (σ x ≠ 0 ∧ succ = nz))
@@ -241,9 +241,9 @@ theorem match_step_ifz_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn
       refine Or.inr ⟨d', hsteps.toSteps, hmatch, ?_⟩
       show Cov S (⟨succ, σ⟩ : Config).node
         (Mstep_edge S (⟨nd, σ⟩ : Config).node (⟨succ, σ⟩ : Config).node M)
-      exact Cov_step_edge S hS wn hstepsrc hcov
+      exact Cov_step_edge S hg hstepsrc hcov
 
-theorem match_step_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+theorem match_step_fault {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P)
     {c c' d : Config} {M : Assignments}
     (hm : Match P S c d M) (hpa : Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node))
     (hcov : Cov S c.node M) (hstep : Step P c c') :
@@ -268,14 +268,15 @@ theorem match_step_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : W
         have hctrl : ∃ rhs, (transform P S).fetch (blockOff P S nd + (insertBefore P S nd).toList.length)
               = some (.assign x rhs (if (insertAfter P S nd).toList.isEmpty then blockOff P S next
                   else blockOff P S nd + (insertBefore P S nd).toList.length + 1)) ∧ eval τ1 rhs = some vv := by
-          by_cases hg : (isNumbered e0 && (recoverable P S nd).contains e0) = true
+          by_cases hfired : (isNumbered e0 && (recoverable P S nd).contains e0) = true
           · refine ⟨.atom (.var (tempFor P e0)),
-              by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_pos hg], ?_⟩
-            have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by simpa using hg
+              by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_pos hfired], ?_⟩
+            have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by
+              simpa using hfired
             have hHe0 : Holds τ1 σ (tempFor P e0) e0 :=
-              hH1 e0 (replace_covered S wn hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
+              hH1 e0 (replace_covered S hg hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
             simp only [eval, evalAtom]; exact (Holds_iff.1 hHe0).trans hvv
-          · refine ⟨e0, by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_neg hg], ?_⟩
+          · refine ⟨e0, by rw [ctrl_slot_fetch S hi]; simp only [ctrlCmd, hf]; rw [if_neg hfired], ?_⟩
             rw [eval_congr (fun y hy => hag1 y (nonFresh_of_used hf
               (by simp only [instrUsedVars]; exact readsVar_imp_mem hy)))]
             exact hvv
@@ -301,13 +302,14 @@ theorem match_step_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : W
           fun e he hev => hX ⟨e, he, hev⟩
         obtain ⟨d', hsteps, hmatch⟩ :=
           match_step_assign S wn hf hvv hagree hHolds hMsub hpa
-            (fun hg => by
-              have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by simpa using hg
-              exact replace_covered S wn hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
+            (fun hfired => by
+              have hand : isNumbered e0 = true ∧ (recoverable P S nd).contains e0 = true := by
+                simpa using hfired
+              exact replace_covered S hg hf hand.1 (Std.HashSet.contains_iff_mem.mp hand.2) hcov)
             hnfσ hnfeσ
         exact Or.inr ⟨d', hsteps.toSteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
           (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inr ⟨x, e0, hf⟩)]; exact he))),
-          Cov_step_edge S hS wn (Step.assign hf hvv) hcov⟩
+          Cov_step_edge S hg (Step.assign hf hvv) hcov⟩
   | @noop nd σ next hf =>
     subst hlabel
     have hi : nd < P.size := fetch_lt hf
@@ -337,45 +339,57 @@ theorem match_step_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : W
         obtain ⟨d', hsteps, hmatch⟩ := match_step_noop S hf hagree hHolds hMsub hpa hnfσ hnfeσ
         exact Or.inr ⟨d', hsteps.toSteps, Match_union_sub hmatch (fun e he => Assignments.mem_union.mpr
           (Or.inr (by rw [insertAfter_eq_insertEdge S (Or.inl hf)]; exact he))),
-          Cov_step_edge S hS wn (Step.noop hf) hcov⟩
+          Cov_step_edge S hg (Step.noop hf) hcov⟩
   | @ifzT nd σ x z nz hf hcond =>
     subst hlabel
-    exact match_step_ifz_fault S hS wn hf (Or.inl ⟨hcond, rfl⟩) hagree hHolds hMsub hpa hcov
+    exact match_step_ifz_fault S hg hf (Or.inl ⟨hcond, rfl⟩) hagree hHolds hMsub hpa hcov
   | @ifzF nd σ x z nz hf hcond =>
     subst hlabel
-    exact match_step_ifz_fault S hS wn hf (Or.inr ⟨hcond, rfl⟩) hagree hHolds hMsub hpa hcov
+    exact match_step_ifz_fault S hg hf (Or.inr ⟨hcond, rfl⟩) hagree hHolds hMsub hpa hcov
 
 /-- **Forward fault simulation.** A source head-run `c ⟶* c_n` ending in a `Faulting` config, matched at
     `c`, drives the target to a `Faulting` config: each step either faults the target now
     (`match_step_fault` left) or advances cleanly and recurses; the terminal fault is `match_faulting`. -/
-theorem sim_fault {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) :
+theorem sim_fault {P : Program} (S : LcmSpec P) (hg : GateSound P S) (wn : WellNormalized P) :
     ∀ {c c_n : Config}, StepsH P c c_n → Faulting P c_n →
     ∀ {d : Config} {M : Assignments}, Match P S c d M →
       Assignments.Subset (S.ηₚ c.node) (S.πₐ c.node) → Cov S c.node M →
       ∃ df, Steps (transform P S) d df ∧ Faulting (transform P S) df := by
   intro c c_n hrun
   induction hrun with
-  | refl => intro hflt d M hm _ hcov; exact match_faulting S wn hm hcov hflt
+  | refl => intro hflt d M hm _ hcov; exact match_faulting S hg hm hcov hflt
   | @head c c1 cn hstep htail ih =>
       intro hflt d M hm hpa hcov
-      rcases match_step_fault S hS wn hm hpa hcov hstep with hF | ⟨d1, hs1, hm1, hcov1⟩
+      rcases match_step_fault S hg wn hm hpa hcov hstep with hF | ⟨d1, hs1, hm1, hcov1⟩
       · exact hF
       · obtain ⟨df, hsdf, hfltdf⟩ := ih hflt hm1 (postpSubAnti_step S hstep hpa) hcov1
         exact ⟨df, steps_trans hs1 hsdf, hfltdf⟩
 
 /-- **`transform_preserves_faulting` — LCM preserves faults (forward `Fault → Fault`).** On a source run
     that reaches a `Faulting` config, the transform also reaches a `Faulting` config. Fills the diagonal
-    `Fault → Fault` cell of the LCM outcome table (LCM.md §5), for any **extremal** bundle `S` over a
-    `WellNormalized` program with the `prependEntry` `noop` entry. -/
-theorem transform_preserves_faulting {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    `Fault → Fault` cell of the LCM outcome table. Stated over `GateSound`, like
+    `transform_preserves_halt`; the two corollaries below are the per-gate forms. -/
+theorem transform_preserves_faulting {P : Program} (S : LcmSpec P) (hg : GateSound P S)
+    (wn : WellNormalized P)
+    {σ : Store} {c_n : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_n) (hflt : Faulting P c_n) :
+    ∃ df, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ df ∧ Faulting (transform P S) df :=
+  sim_fault S hg wn (steps_toH hrun) hflt (match_init S σ) (postpSubAnti_entry S) (Cov_entry S hg)
+
+/-- Fault preservation under the **materialization** gate — from validity alone. -/
+theorem transform_preserves_faulting_mat {P : Program} (S : LcmSpec P) (hm : S.gate = .materialized)
+    (wn : WellNormalized P)
+    {σ : Store} {c_n : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_n) (hflt : Faulting P c_n) :
+    ∃ df, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ df ∧ Faulting (transform P S) df :=
+  transform_preserves_faulting S (gateSound_materialized S hm) wn hrun hflt
+
+/-- Fault preservation under the classical **demand** gate — the original theorem, for an extremal
+    bundle over a `WellNormalized` program with the `prependEntry` `noop` entry. -/
+theorem transform_preserves_faulting_demand {P : Program} (S : LcmSpec P) (hd : S.gate = .demand)
+    (hS : Extremal S) (wn : WellNormalized P)
     {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
     {σ : Store} {c_n : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_n) (hflt : Faulting P c_n) :
-    ∃ df, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ df ∧ Faulting (transform P S) df := by
-  have hcov : Cov S (⟨P.entry, σ⟩ : Config).node Assignments.empty := by
-    intro e he
-    rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-    exact absurd (πᵤK_sub S _ e he.1.1) (used_entry_empty S hS wn hen e)
-  exact sim_fault S hS wn (steps_toH hrun) hflt (match_init S σ) (postpSubAnti_entry S) hcov
+    ∃ df, Steps (transform P S) ⟨blockOff P S P.entry, σ⟩ df ∧ Faulting (transform P S) df :=
+  transform_preserves_faulting S (gateSound_demand S hd hS wn hen) wn hrun hflt
 
 
 end BaseLanguage.Analyses.LCM

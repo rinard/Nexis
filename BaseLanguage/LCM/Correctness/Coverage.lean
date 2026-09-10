@@ -4,14 +4,19 @@ import BaseLanguage.LCM.Correctness.Match
 namespace BaseLanguage.Analyses.LCM
 open Tac Normalize Semantics Std
 
-/-! ## The coverage tool — least-`πᵤ` decomposition
+/-! ## The demand tool — least-`πᵤ` decomposition
 
-The crux of LCM correctness: a demanded expression at `n` is either a genuine *local* use there
-(`ue ∖ latestNode`) or demanded by a *successor* (hence `τᵤ`). Proved from **leastness** (`isUsed.2`):
-if `e ∈ πᵤ n` were neither, then `πᵤ' := πᵤ ∖ {e at n}` would still satisfy `Used` — the only
-non-trivial obligation is `predict` for a step `n → b`, where `e ∈ πᵤ b` would force `e ∈ τᵤ n`
-(`isUsedOut.1.predict`), contradicting the assumption — so `isUsed.2` gives `πᵤ ⊆ πᵤ'`, i.e.
-`e ∉ πᵤ n`, a contradiction. This is where correctness consumes `isUsed.2`. -/
+A demanded expression at `n` is either a genuine *local* use there (`ue ∖ latestNode`) or demanded by a
+*successor* (hence `τᵤ`). Proved from **leastness** (`isUsed.2`): if `e ∈ πᵤ n` were neither, then
+`πᵤ' := πᵤ ∖ {e at n}` would still satisfy `Used` — the only non-trivial obligation is `predict` for a
+step `n → b`, where `e ∈ πᵤ b` would force `e ∈ τᵤ n` (`isUsedOut.1.predict`), contradicting the
+assumption — so `isUsed.2` gives `πᵤ ⊆ πᵤ'`, i.e. `e ∉ πᵤ n`, a contradiction.
+
+This *was* the crux of LCM correctness, back when the replace gate read `πᵤ`. It no longer is: the gate
+reads `ηₘ` and `Cov` is an availability invariant, so nothing below this heading is reachable from
+`transform_preserves_halt`. What consumes `isUsed.2` now is `demand_materialized`
+(`Correctness/MatchStep.lean`) — the proof that the *new* gate admits everything the old one did, which
+is an optimality statement and is therefore exactly where leastness belongs. -/
 
 theorem used_decomp {P : Program} (S : LcmSpec P) (hS : Extremal S) {n : Node} {e : Expr} (he : e ∈ S.πᵤ n) :
     e ∈ Assignments.sdiff (ue P n) (latestNode P S.ηₚ S.τₚ n) ∨ e ∈ S.τᵤ n := by
@@ -485,10 +490,38 @@ theorem latestOut_used_succ_sub_insertEdge {P : Program} (S : LcmSpec P) (hS : E
       · exact transfer z h
       · exact h
 
-/-- Coverage invariant: demanded-and-not-placed temps are in `M`. `insertOut = latestOut ∩ usedOut` unifies
-    node-exit (`assign`/`noop`) and edge (`ifz`) placement leaving `n`. -/
+/-- **The classical demand set**: what `πᵤ` demands at `n` that `n`'s own placement does not itself supply
+    — neither its entry chain (`insertBefore`, which runs before the control) nor its exit/edge chain
+    (`insertOut = latestOut ∩ usedOut`, which runs after it, unifying the `assign`/`noop` node-exit and the
+    `ifz` edge placement).
+
+    This is the coverage invariant of the `.demand` gate, and it is what `covSet` resolves to there. It
+    is also what the **optimality** development measures both gates against: `demand_materialized` shows
+    it is contained in `ηₘ`, i.e. that the `.materialized` gate admits everything the `.demand` gate
+    did. -/
+def demandSet {P : Program} (S : LcmSpec P) (n : Node) : Assignments :=
+  Assignments.sdiff (Assignments.sdiff (S.πᵤK n) (insertBefore P S n)) (insertOut P S n)
+
+theorem mem_demandSet {P : Program} {S : LcmSpec P} {n : Node} {e : Expr} :
+    e ∈ demandSet S n ↔ (e ∈ S.πᵤK n ∧ e ∉ insertBefore P S n) ∧ e ∉ insertOut P S n := by
+  unfold demandSet; rw [Assignments.mem_sdiff, Assignments.mem_sdiff]
+
+/-- **What the simulation must hold on entry to `n`**, per the bundle's chosen gate.
+
+    `.demand` needs the classical demand set: everything `πᵤ` demands that `n`'s own chains do not supply.
+    `.materialized` needs the materialization ghost itself. The gate's own upstream half (`gateSet`) is
+    *not* the right set for `.demand` — an expression `πᵤ` demands at `n` may be materialized by `n`'s own
+    exit chain, which is too late for `n`'s control to read; `GateSound.read` is where that gap is
+    closed. -/
+def covSet {P : Program} (S : LcmSpec P) (n : Node) : Assignments :=
+  match S.gate with
+  | .demand       => demandSet S n
+  | .materialized => S.ηₘK n
+
+/-- **The coverage invariant.** Every temp the chosen gate can read on entry to `n` really is held by the
+    operational materialized set `M`. -/
 def Cov {P : Program} (S : LcmSpec P) (n : Node) (M : Assignments) : Prop :=
-  Assignments.Subset (Assignments.sdiff (Assignments.sdiff (S.πᵤK n) (insertBefore P S n)) (insertOut P S n)) M
+  Assignments.Subset (covSet S n) M
 
 /-- The materialized set after node `c`'s block, before the outgoing edge (`insertAfter` = the exit chain for
     `assign`/`noop`, `∅` for `ifz`). -/
@@ -501,15 +534,19 @@ def Mstep {P : Program} (S : LcmSpec P) (c : Node) (M : Assignments) : Assignmen
 def Mstep_edge {P : Program} (S : LcmSpec P) (c c' : Node) (M : Assignments) : Assignments :=
   Assignments.union (Mstep S c M) (insertEdge P S c c')
 
-/-- **`Cov_step_edge` — set-level coverage maintenance across one step, edge-indexed.**
+/-- **Demand maintenance across one step, edge-indexed** — the old `Cov_step_edge`, now stated on
+    `demandSet` and used only by the optimality development (via `demand_materialized`) and by the basic
+    transform. This is the argument that consumes `πᵤ`/`τᵤ` leastness, and it is why it takes `Extremal S`.
+
     The transparent-`latestEdge` case is the definitional `edgeIns_sub_insertEdge` (an `ifz` edge insert lands
     on its branch edge chain, tracked by `Mstep_edge`); the transparent-`πᵤ` case routes a would-be
     `insertOut` member to the taken edge via `latestOut_used_succ_sub_insertEdge`. -/
-theorem Cov_step_edge {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) {c c' : Config} {M : Assignments}
-    (hstep : Step P c c') (hcov : Cov S c.node M) : Cov S c'.node (Mstep_edge S c.node c'.node M) := by
+theorem demand_step_edge {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    {c c' : Config} {M : Assignments} (hstep : Step P c c')
+    (hcov : Assignments.Subset (demandSet S c.node) M) :
+    Assignments.Subset (demandSet S c'.node) (Mstep_edge S c.node c'.node M) := by
   intro e he
-  rw [Assignments.mem_sdiff, Assignments.mem_sdiff] at he
-  obtain ⟨⟨huK, hnia⟩, hnio⟩ := he
+  obtain ⟨⟨huK, hnia⟩, hnio⟩ := mem_demandSet.mp he
   -- `keep e` travels with the demand: it is what lets each branch land back in a *filtered* set.
   have hkeep : S.keep e = true := (mem_πᵤK.mp huK).2
   have hu : e ∈ S.πᵤ c'.node := πᵤK_sub S _ e huK
@@ -527,14 +564,137 @@ theorem Cov_step_edge {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : Well
       · have hnio_c : e ∉ insertOut P S c.node := fun hio =>
           hedge2 (latestOut_used_succ_sub_insertEdge S hS hstep hu hnlat
             (Assignments.mem_inter.mp hio).1 (Assignments.mem_inter.mp hio).2)
-        have heM : e ∈ M := hcov e (Assignments.mem_sdiff.mpr
-          ⟨Assignments.mem_sdiff.mpr ⟨mem_πᵤK.mpr ⟨hcu, hkeep⟩, hiac⟩, hnio_c⟩)
+        have heM : e ∈ M := hcov e (mem_demandSet.mpr
+          ⟨⟨mem_πᵤK.mpr ⟨hcu, hkeep⟩, hiac⟩, hnio_c⟩)
         exact Or.inl (Assignments.mem_union.mpr
           (Or.inl (Assignments.mem_inter.mpr ⟨Assignments.mem_union.mpr (Or.inl heM), htr⟩)))
     · exact absurd hlat hnlat
     · exact Or.inr (edgeIns_sub_insertEdge S hedge
         (mem_τᵤK.mpr ⟨S.isUsedOut.predict c c' hstep e hu, hkeep⟩))
   · exact Or.inl (Assignments.mem_union.mpr (Or.inr (killed_in_insertAfter S hS wn hstep huK htr hnlat)))
+
+/-! ## `GateSound` — the one obligation the correctness development consumes
+
+The forward simulation needs exactly three things of the replace gate, and nothing else. Factoring them
+into a single predicate is what lets **one** correctness proof carry **both** gates — the same move
+`match_step_core` already makes for the two no-fault obligations (`hnfB`/`hnfE`), and `Divergence.lean`
+for `SafeInserts`.
+
+What the two modes pay for it is the whole story of this development:
+
+* `.materialized` discharges all three from the bundle's **validity** — `isMatK.update`, `isMat.seed`,
+  and a `mem_union` split. See `gateSound_materialized`. No hypotheses at all.
+* `.demand` discharges them from **extremality** plus `WellNormalized P` plus the `prependEntry` `noop`
+  entry — `demand_step_edge` (leastness of `πᵤ`, `used_decomp`, `killed_in_insertAfter`),
+  `used_entry_empty` (a leastness witness), and a `NoSelfRead` argument. See `gateSound_demand`
+  (`Correctness/MatchStep.lean`, where `used_entry_empty` lives). -/
+
+/-- **The replace gate is sound**: what it admits, the simulation can supply. -/
+structure GateSound (P : Program) (S : LcmSpec P) : Prop where
+  /-- Nothing is covered at the entry, so the simulation may start with `M = ∅`. -/
+  entry : ∀ e, e ∉ covSet S P.entry
+  /-- Along a step, what is covered at `n'` was placed on the way in — on the edge, by `n`'s exit chain,
+      or by `n`'s entry chain surviving `n`'s instruction — or was covered at `n` and survived. -/
+  step : ∀ c c', Step P c c' → ∀ e ∈ covSet S c'.node,
+      e ∈ insertEdge P S c.node c'.node
+    ∨ e ∈ insertAfter P S c.node
+    ∨ (e ∈ insertBefore P S c.node ∧ e ∈ pass P c.node)
+    ∨ (e ∈ covSet S c.node ∧ e ∈ pass P c.node)
+  /-- At a numbered assignment the gate fires only on something covered, or born at this node's entry —
+      never on something materialized only by this node's *exit* chain, which the control cannot read. -/
+  read : ∀ {nd : Node} {x : Var} {e : Expr} {next : Node},
+      P.fetch nd = some (.assign x e next) → isNumbered e = true →
+      e ∈ recoverable P S nd → e ∈ covSet S nd ∨ e ∈ insertBefore P S nd
+
+/-- **`Cov_step_edge` — coverage maintenance across one step.** Every disjunct of `GateSound.step` lands
+    in `Mstep_edge`; the carry disjunct uses the induction hypothesis. -/
+theorem Cov_step_edge {P : Program} (S : LcmSpec P) (hg : GateSound P S)
+    {c c' : Config} {M : Assignments}
+    (hstep : Step P c c') (hcov : Cov S c.node M) : Cov S c'.node (Mstep_edge S c.node c'.node M) := by
+  intro e he
+  rcases hg.step c c' hstep e he with hE | hA | ⟨hib, hpass⟩ | ⟨hcv, hpass⟩
+  · exact Assignments.mem_union.mpr (Or.inr hE)
+  · exact Assignments.mem_union.mpr (Or.inl (Assignments.mem_union.mpr (Or.inr hA)))
+  · exact Assignments.mem_union.mpr (Or.inl (Assignments.mem_union.mpr (Or.inl
+      (Assignments.mem_inter.mpr ⟨Assignments.mem_union.mpr (Or.inr hib), hpass⟩))))
+  · exact Assignments.mem_union.mpr (Or.inl (Assignments.mem_union.mpr (Or.inl
+      (Assignments.mem_inter.mpr ⟨Assignments.mem_union.mpr (Or.inl (hcov e hcv)), hpass⟩))))
+
+/-- **The coverage base case** — `GateSound.entry`, read as `Cov … ∅`. -/
+theorem Cov_entry {P : Program} (S : LcmSpec P) (hg : GateSound P S) :
+    Cov S P.entry Assignments.empty := fun e he => absurd he (hg.entry e)
+
+/-! ### The `.materialized` gate is sound from validity alone -/
+
+theorem covSet_mat {P : Program} {S : LcmSpec P} (hm : S.gate = .materialized) (n : Node) :
+    covSet S n = S.ηₘK n := by unfold covSet; rw [hm]
+
+/-- **`GateSound` for the materialization gate, from validity.** Three fields, three clauses:
+
+    * `entry` is `isMat.seed` (`ηₘ(entry) ⊆ entrySeed = ∅`);
+    * `step` is one `mem_union` split of `isMatK.update` — the placement disjunct is `matPlace` over the
+      filtered `τᵤK`, which **is** `insertEdge ∪ (insertBefore ∩ pass)` definitionally, since `edgeGen`
+      and `nodeGen` at `τᵤK` are `insertEdge` and `insertBefore`; the carry disjunct's `∖ notPass` reads
+      back as transparency via `isMatK.within`;
+    * `read` is `mem_union` on the gate itself — `recoverable = ηₘK ∪ insertBefore = covSet ∪
+      insertBefore` — so the "materialized too late" case that `.demand` must rule out is not even
+      expressible here: `ηₘ` is indexed at block entry.
+
+    No `Extremal`, no `WellNormalized`, no entry `noop`, and no reasoning about `πᵤ`. Compare
+    `gateSound_demand`, which needs all of it. That asymmetry is the polarity flip the seventh ghost
+    buys. -/
+theorem gateSound_materialized {P : Program} (S : LcmSpec P) (hm : S.gate = .materialized) :
+    GateSound P S where
+  entry := by
+    intro e he
+    rw [covSet_mat hm] at he
+    exact absurd (S.isMat.seed e (ηₘK_sub S P.entry e he)) (by
+      intro hmem
+      simp only [entrySeed, Assignments.empty] at hmem
+      exact Std.HashSet.not_mem_empty hmem)
+  step := by
+    intro c c' hstep e he
+    rw [covSet_mat hm] at he ⊢
+    rcases Assignments.mem_union.mp (S.isMatK.update c c' hstep e he) with hpl | hcarry
+    · rcases Assignments.mem_union.mp hpl with hE | hN
+      · exact Or.inl hE
+      · exact Or.inr (Or.inr (Or.inl (Assignments.mem_inter.mp hN)))
+    · obtain ⟨hb, hnp⟩ := Assignments.mem_sdiff.mp hcarry
+      refine Or.inr (Or.inr (Or.inr ⟨hb, ?_⟩))
+      by_cases hp : e ∈ pass P c.node
+      · exact hp
+      · exact absurd (Assignments.mem_sdiff.mpr ⟨S.isMatK.within c.node e hb, hp⟩) hnp
+  read := by
+    intro nd x e next _ _ hrecov
+    rw [covSet_mat hm]
+    unfold recoverable gateSet at hrecov
+    rw [hm] at hrecov
+    exact Assignments.mem_union.mp hrecov
+
+/-! ### Both gates, measured against each other
+
+`GateComplete` is the optimality-side counterpart of `GateSound`: it says the chosen gate admits
+everything the *classical* demand set does, so choosing it costs no replacement. `.demand` satisfies it
+by definition; `.materialized` satisfies it on an extremal bundle (`demand_materialized`). -/
+
+/-- The chosen gate covers at least the classical demand set. -/
+def GateComplete {P : Program} (S : LcmSpec P) : Prop :=
+  ∀ n, Assignments.Subset (demandSet S n) (covSet S n)
+
+/-- Whatever the gate, what it covers it also admits. -/
+theorem covSet_sub_recoverable {P : Program} (S : LcmSpec P) (n : Node) :
+    Assignments.Subset (covSet S n) (recoverable P S n) := by
+  intro e he
+  refine Assignments.mem_union.mpr (Or.inl ?_)
+  unfold covSet at he; unfold gateSet
+  cases hg : S.gate with
+  | demand       => rw [hg] at he; exact (mem_demandSet.mp he).1.1
+  | materialized => rw [hg] at he; exact he
+
+/-- The `.demand` gate is complete for the demand set by definition. -/
+theorem gateComplete_demand {P : Program} (S : LcmSpec P) (hd : S.gate = .demand) :
+    GateComplete S := by
+  intro n e he; unfold covSet; rw [hd]; exact he
 
 /-! ## Why `πᵤ ⊆ πₐ` is false — the entry+edge placement
 

@@ -73,7 +73,8 @@ theorem insertBefore_notPostp_succ_earliest {P : Program} (S : LcmSpec P) (hS : 
 /-- **Non-boundary `cE ⇒ e∈postp(c)`** (the precondition lever). Inserts `⊆ postp`; an exit insert at a
     non-boundary step is in the `ηₚ∖ue` part of `latestEdge` (the `earliest` part excluded); a kept use is
     `∈ ue∖πᵤ ⊆ latestNode ⊆ ηₚ`. -/
-theorem cE_imp_postp_earliest {P : Program} (S : LcmSpec P) {c c' : Config} {e : Expr}
+theorem cE_imp_postp_earliest {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+    (hgc : GateComplete S) {c c' : Config} {e : Expr}
     (hi : c.node < P.size) (hnum : isNumbered e = true) (hkeep : S.keep e = true) (hstep : Step P c c')
     (hnb : e ∉ earliest P S.πₐ S.ηₐ c.node c'.node)
     (hce : cE P S c.node e = true) : e ∈ S.ηₚ c.node := by
@@ -101,13 +102,7 @@ theorem cE_imp_postp_earliest {P : Program} (S : LcmSpec P) {c c' : Config} {e :
       | @ifzT nd σ x z nz hf hc => unfold insertAfter at hie; rw [hf] at hie; exact absurd hie Std.HashSet.not_mem_empty
       | @ifzF nd σ x z nz hf hc => unfold insertAfter at hie; rw [hf] at hie; exact absurd hie Std.HashSet.not_mem_empty
   · obtain ⟨hue, hnr⟩ := keptCtrl_imp hi hnum hk
-    have hnused : e ∉ S.πᵤK c.node := fun h => hnr (mem_recoverable.2 (Or.inl h))
-    have hlat : e ∈ latestNode P S.ηₚ S.τₚ c.node := by
-      by_cases hl : e ∈ latestNode P S.ηₚ S.τₚ c.node
-      · exact hl
-      · exact absurd (mem_πᵤK.mpr
-          ⟨S.isUsed.check c.node e (Assignments.mem_sdiff.mpr ⟨hue, hl⟩), hkeep⟩) hnused
-    exact latestNode_sub_postp S c.node e hlat
+    exact latestNode_sub_postp S c.node e (keptUse_latestNode S hgc wn hue hkeep hnr)
 
 /-- **Non-boundary kept/insertAfter establish.** Completes the establish for all `cE` shapes at a non-boundary
     step (insertBefore is `insertBefore_notPostp_succ_earliest`; this is kept + insertAfter). -/
@@ -141,7 +136,8 @@ def crossCount (P : Program) (S : LcmSpec P) (e : Expr) : Config → Nat → Nat
 
 /-- At a node with `e ∉ postp`, the only possible eval is an exit insert (entry inserts and kept controls
     both need `e ∈ ηₚ`). -/
-theorem cE_notPostp_imp_insertAfter {P : Program} (S : LcmSpec P) {c : Config} {e : Expr}
+theorem cE_notPostp_imp_insertAfter {P : Program} (S : LcmSpec P) (wn : WellNormalized P) (hgc : GateComplete S)
+    {c : Config} {e : Expr}
     (hi : c.node < P.size) (hnum : isNumbered e = true) (hkeep : S.keep e = true)
     (hnp : e ∉ S.ηₚ c.node) (hce : cE P S c.node e = true) : e ∈ insertAfter P S c.node := by
   unfold cE at hce
@@ -152,16 +148,12 @@ theorem cE_notPostp_imp_insertAfter {P : Program} (S : LcmSpec P) {c : Config} {
     · exact hie
   · -- kept ⇒ e ∈ ue ∖ used ⊆ latestNode ⊆ postp, contra hnp
     obtain ⟨hue, hnr⟩ := keptCtrl_imp hi hnum hk
-    have hnused : e ∉ S.πᵤK c.node := fun h => hnr (mem_recoverable.2 (Or.inl h))
-    have hlat : e ∈ latestNode P S.ηₚ S.τₚ c.node := by
-      by_cases hl : e ∈ latestNode P S.ηₚ S.τₚ c.node
-      · exact hl
-      · exact absurd (mem_πᵤK.mpr
-          ⟨S.isUsed.check c.node e (Assignments.mem_sdiff.mpr ⟨hue, hl⟩), hkeep⟩) hnused
-    exact absurd (latestNode_sub_postp S c.node e hlat) hnp
+    exact absurd (latestNode_sub_postp S c.node e
+      (keptUse_latestNode S hgc wn hue hkeep hnr)) hnp
 
 /-- Edge (`cEb`) version of `cE_imp_postp_earliest`. -/
-theorem cEb_imp_postp_earliest {P : Program} (S : LcmSpec P) {c c' : Config} {e : Expr}
+theorem cEb_imp_postp_earliest {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+    (hgc : GateComplete S) {c c' : Config} {e : Expr}
     (hi : c.node < P.size) (hnum : isNumbered e = true) (hkeep : S.keep e = true) (hstep : Step P c c')
     (hnb : e ∉ earliest P S.πₐ S.ηₐ c.node c'.node)
     (hce : cEb P S c.node c'.node e = true) : e ∈ S.ηₚ c.node := by
@@ -177,13 +169,7 @@ theorem cEb_imp_postp_earliest {P : Program} (S : LcmSpec P) {c c' : Config} {e 
       · exact absurd hear hnb
       · exact (Assignments.mem_sdiff.mp hdif).1
   · obtain ⟨hue, hnr⟩ := keptCtrl_imp hi hnum hk
-    have hnused : e ∉ S.πᵤK c.node := fun h => hnr (mem_recoverable.2 (Or.inl h))
-    have hlat : e ∈ latestNode P S.ηₚ S.τₚ c.node := by
-      by_cases hl : e ∈ latestNode P S.ηₚ S.τₚ c.node
-      · exact hl
-      · exact absurd (mem_πᵤK.mpr
-          ⟨S.isUsed.check c.node e (Assignments.mem_sdiff.mpr ⟨hue, hl⟩), hkeep⟩) hnused
-    exact latestNode_sub_postp S c.node e hlat
+    exact latestNode_sub_postp S c.node e (keptUse_latestNode S hgc wn hue hkeep hnr)
 
 /-- Edge (`cEb`) version of `cE_imp_notPostp_succ_earliest`. -/
 theorem cEb_imp_notPostp_succ_earliest {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
@@ -201,7 +187,8 @@ theorem cEb_imp_notPostp_succ_earliest {P : Program} (S : LcmSpec P) (hS : Extre
     exact ue_transp_notPostp_succ S hstep hue (ue_sub_transp wn hue)
 
 /-- Edge (`cEb`) version of `cE_notPostp_imp_insertAfter`: at `e ∉ postp c`, the only eval is a taken edge insert. -/
-theorem cEb_notPostp_imp_insertEdge {P : Program} (S : LcmSpec P) {c c' : Config} {e : Expr}
+theorem cEb_notPostp_imp_insertEdge {P : Program} (S : LcmSpec P) (wn : WellNormalized P)
+    (hgc : GateComplete S) {c c' : Config} {e : Expr}
     (hi : c.node < P.size) (hnum : isNumbered e = true) (hkeep : S.keep e = true)
     (hnp : e ∉ S.ηₚ c.node) (hce : cEb P S c.node c'.node e = true) : e ∈ insertEdge P S c.node c'.node := by
   unfold cEb at hce
@@ -211,18 +198,14 @@ theorem cEb_notPostp_imp_insertEdge {P : Program} (S : LcmSpec P) {c c' : Config
     · exact absurd (latestNode_sub_postp S c.node e (insertBefore_sub_latestNode (Assignments.mem_toList.2 hia))) hnp
     · exact hie
   · obtain ⟨hue, hnr⟩ := keptCtrl_imp hi hnum hk
-    have hnused : e ∉ S.πᵤK c.node := fun h => hnr (mem_recoverable.2 (Or.inl h))
-    have hlat : e ∈ latestNode P S.ηₚ S.τₚ c.node := by
-      by_cases hl : e ∈ latestNode P S.ηₚ S.τₚ c.node
-      · exact hl
-      · exact absurd (mem_πᵤK.mpr
-          ⟨S.isUsed.check c.node e (Assignments.mem_sdiff.mpr ⟨hue, hl⟩), hkeep⟩) hnused
-    exact absurd (latestNode_sub_postp S c.node e hlat) hnp
+    exact absurd (latestNode_sub_postp S c.node e
+      (keptUse_latestNode S hgc wn hue hkeep hnr)) hnp
 
 /-- **Lemma A (edge) — `srcContrib ≤ #crossings + [postp start]`.** Along any halting source run, the transform
     evaluates `e` at most once per `earliest`-crossing (plus the initial pending deferral). `srcContrib` (the
     edge-indexed per-step contribution `= [cEb]` via `blockContribution_eq_cEb`) replaces the per-node `#cE`. -/
-theorem cE_count_le_cross {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P) {e : Expr}
+theorem cE_count_le_cross {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
+    (hgc : GateComplete S) {e : Expr}
     (hnum : isNumbered e = true) (hkeep : S.keep e = true) :
     ∀ {c c_f : Config}, StepsH P c c_f → Final P c_f →
     ∀ ks, run P c ks = (c_f, .next c_f) →
@@ -268,7 +251,7 @@ theorem cE_count_le_cross {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : 
             · rw [if_neg hpc]
               by_cases hce : cEb P S c.node c1.node e = true
               · rw [if_pos hce]
-                have hie : e ∈ insertEdge P S c.node c1.node := cEb_notPostp_imp_insertEdge S hi hnum hkeep hpc hce
+                have hie : e ∈ insertEdge P S c.node c1.node := cEb_notPostp_imp_insertEdge S wn hgc hi hnum hkeep hpc hce
                 rw [if_neg (insertEdge_imp_notPostp_succ S hie)] at ihk
                 omega
               · rw [Bool.not_eq_true] at hce; rw [if_neg (by rw [hce]; exact Bool.false_ne_true)]
@@ -277,7 +260,7 @@ theorem cE_count_le_cross {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : 
             rw [if_neg hcross]
             by_cases hce : cEb P S c.node c1.node e = true
             · rw [if_pos hce]
-              rw [if_pos (cEb_imp_postp_earliest S hi hnum hkeep hstep hcross hce)]
+              rw [if_pos (cEb_imp_postp_earliest S wn hgc hi hnum hkeep hstep hcross hce)]
               rw [if_neg (cEb_imp_notPostp_succ_earliest S hS wn hnum hstep hcross hce)] at ihk
               omega
             · rw [Bool.not_eq_true] at hce; rw [if_neg (by rw [hce]; exact Bool.false_ne_true)]
@@ -388,8 +371,9 @@ theorem notPostp_entry {P : Program} (S : LcmSpec P) {e : Expr} : e ∉ S.ηₚ 
     `c_f` under the layout. Without that conjunct the bound would be vacuous: `evalCount` is fuel-bounded
     (`IR/Cost.lean`, `evalCount _ 0 = 0`), so an unconstrained `∃ kt` is discharged by `kt := 0` regardless
     of the hypotheses. The count is therefore over the *complete* transformed run, not a prefix of it. -/
-theorem transform_evalCount_le_safe {P : Program} (S : LcmSpec P) (hS : Extremal S) (wn : WellNormalized P)
-    {ne : Node} (hen : P.fetch P.entry = some (.noop ne)) {e : Expr} (hnum : isNumbered e = true)
+theorem transform_evalCount_le_safe {P : Program} (S : LcmSpec P) (hS : Extremal S)
+    (hg : GateSound P S) (hgc : GateComplete S) (wn : WellNormalized P)
+    {e : Expr} (hnum : isNumbered e = true)
     (hkeep : S.keep e = true)
     (pl : Node → Bool) {σ : Store} {c_f : Config}
     (hrun : Steps P ⟨P.entry, σ⟩ c_f) (hfin : Final P c_f)
@@ -399,10 +383,10 @@ theorem transform_evalCount_le_safe {P : Program} (S : LcmSpec P) (hS : Extremal
                 = (⟨blockOff P S c_f.node, τf⟩, .next ⟨blockOff P S c_f.node, τf⟩)
             ∧ evalCount (transform P S) e ⟨blockOff P S P.entry, σ⟩ kt
                 ≤ ((runNodes P ⟨P.entry, σ⟩ ks).filter pl).length := by
-  obtain ⟨kt, τf, hrunT, heq⟩ := transform_evalCount S hS wn hen e hrun hfin
+  obtain ⟨kt, τf, hrunT, heq⟩ := transform_evalCount S hg e hrun hfin
   refine ⟨kt, τf, hrunT, ?_⟩
   rw [heq ks hks]
-  have hA := cE_count_le_cross S hS wn hnum hkeep (steps_toH hrun) hfin ks hks
+  have hA := cE_count_le_cross S hS wn hgc hnum hkeep (steps_toH hrun) hfin ks hks
   have hB := crossCount_le_pl S pl (steps_toH hrun) hfin ks hks false hcov
   rw [if_neg (notPostp_entry S)] at hA
   simp only [if_false, Nat.add_zero] at hA hB
