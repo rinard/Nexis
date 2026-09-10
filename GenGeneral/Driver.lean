@@ -62,6 +62,7 @@ def manifest : List String :=
   , "analyses/reachable/Reachable.gsl"
   , "analyses/constprop/ConstProp.gsl"   -- fwd·must over ⟨var,const⟩ (`ConstPairs[CPair]`)
   , "analyses/lcm/Lcm.gsl"               -- 7 ghosts, every quadrant + both confluence ops; compiler-facing
+  , "analyses/lcmmat/LcmMat.gsl"         -- Lcm + a materialization ghost: validity-sufficient replace gate
   , "analyses/structavail/StructAvail.gsl" -- `gather` atom (AND-gather)
   , "analyses/taint/Taint.gsl"           -- `image` atom (OR-gather / ∃)
   , "analyses/primeadd/PrimeAdd.gsl"     -- compound `gather ∩ gate`

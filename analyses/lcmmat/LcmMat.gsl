@@ -1,0 +1,74 @@
+-- Copyright (c) 2026 Martin Rinard
+-- LcmMat.gsl — LCM with a SEVENTH ghost: availability of the temporary in the TRANSFORMED program.
+--
+-- Ghosts 1-6 are character-for-character `analyses/lcm/Lcm.gsl`. The only addition is (7) `Materialized`.
+--
+-- Why. LCM's correctness proof assumes `Extremal S`, not merely validity, and the exhibit
+-- `examples/lcm-extremality/ExtremalityNeeded.lean` shows why: the transform's replace gate
+-- (`recoverable = πᵤK ∪ insertBefore`) can admit a replacement with no matching insertion when `πᵤ` is
+-- valid but too large. Ruling that out needs a LOWER bound on a LEAST fixpoint, which no clause can
+-- impose — leastness quantifies over all solutions and is irreducibly second-order.
+--
+-- `Materialized` inverts the polarity. It is a history·must ghost, so its `update` is an UPPER bound:
+-- everything available at `n'` was either placed on the way in, or was available at `n` and survived
+-- `n`'s instruction. That IS the soundness statement, and it is the direction every clause already
+-- expresses — so a transform whose replace gate reads `ηₘ` needs only VALIDITY. Extremality of `ηₘ`
+-- widens how much gets replaced, i.e. it is an optimality concern, which is where it belongs.
+--
+-- Note the clause shape. The node-entry generator sits INSIDE the transparency filter and the edge
+-- generator outside it, because `nodeGen` is written before `n`'s instruction and `edgeGen` after it.
+-- Folding that filter into the placement (`matPlace = edgeGen ∪ (nodeGen ∩ pass)`) and naming the kill
+-- (`notPass = allExprs ∖ pass`) puts the clause in exactly the `place ∪ (self ∖ gres)` form the generator
+-- recognizes for a forward-must ghost reading foreign ghosts — the same shape as `Postponable` above.
+-- No grammar extension is involved.
+--
+-- SCOPE: `nodeGen`/`edgeGen` read the unfiltered `τᵤ` where the transform gates on `τᵤK = τᵤ ∩ keep`, so
+-- this describes the CLASSICAL mode exactly. Under `--lcm=safe` the filter removes insertions and `ηₘ`
+-- would over-state availability; a keep-aware variant needs the mode filter visible to the analysis,
+-- which it deliberately is not.
+
+include analyses.lcmmat.LcmMatDefs
+
+analysis LcmMat {
+
+  prophecy Anticipated πₐ : Assignments[Expr] {         -- prophecy · must  ⇒  bwd·must
+    predict : ∀ n→n'. πₐ(n) ∖ ue(n) ⊆ πₐ(n')
+    check   : ∀ n. πₐ(n) ⊆ ue(n) ∪ pass(n)
+    seed    : πₐ(final) ⊆ haltSeed
+    within  : ∀ n. πₐ(n) ⊆ allExprs
+  }
+
+  history Available ηₐ : Assignments[Expr] {           -- history · must  ⇒  fwd·must
+    update : ∀ n→n'. ηₐ(n') ⊆ de(n) ∪ (ηₐ(n) ∩ pass(n))
+    seed   : ηₐ(entry) ⊆ entrySeed
+    within : ∀ n. ηₐ(n) ⊆ allExprs
+  }
+
+  history Postponable ηₚ : Assignments[Expr] {         -- history · must, edge gen
+    update : ∀ n→n'. ηₚ(n') ⊆ earliest(πₐ,ηₐ)(n,n') ∪ (ηₚ(n) ∖ ue(n))
+    seed   : ηₚ(entry) ⊆ entrySeed
+    within : ∀ n. ηₚ(n) ⊆ allExprs
+  }
+
+  prophecy TauP τₚ : Assignments[Expr] {                -- MEET of ηₚ
+    predict : ∀ n→n'. τₚ(n) ⊆ ηₚ(n')
+    within  : ∀ n. τₚ(n) ⊆ allExprs
+  }
+
+  prophecy Used πᵤ : Assignments[Expr] {                -- prophecy · may, edge kill  ⇒  bwd·may
+    predict : ∀ n→n'. πᵤ(n') ⊆ πᵤ(n) ∪ ( latestNode(ηₚ,τₚ)(n') ∪ latestEdge(πₐ,ηₐ,ηₚ)(n,n') )
+    check   : ∀ n. ue(n) ∖ latestNode(ηₚ,τₚ)(n) ⊆ πᵤ(n)
+    within  : ∀ n. πᵤ(n) ⊆ allExprs
+  }
+
+  prophecy UsedOut τᵤ : Assignments[Expr] {          -- JOIN of πᵤ  (foreign πᵤ' ⊆ self)
+    predict : ∀ n→n'. πᵤ(n') ⊆ τᵤ(n)
+    within  : ∀ n. τᵤ(n) ⊆ allExprs
+  }
+
+  history Materialized ηₘ : Assignments[Expr] {      -- history · must  ⇒  fwd·must  (THE ADDITION)
+    update : ∀ n→n'. ηₘ(n') ⊆ matPlace(πₐ,ηₐ,ηₚ,τₚ,τᵤ)(n,n') ∪ (ηₘ(n) ∖ notPass(n))
+    seed   : ηₘ(entry) ⊆ entrySeed
+    within : ∀ n. ηₘ(n) ⊆ allExprs
+  }
+}
