@@ -35,26 +35,30 @@ namespace BaseLanguage.Analyses.LcmMat
 open BaseLanguage.Tac BaseLanguage.Semantics BaseLanguage.Analysis Normalize Std
 open BaseLanguage.Analyses.LCM
 
+/-- **The bundle the compiler actually runs**, named so the statements below can mention it without
+    respelling `lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf` at every occurrence. -/
+def normSolved {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
+    LCM.LcmSpec (normalize P) :=
+  lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf
+
 /-- **Computational optimality of LCM on the compiler's own bundle.** For any well-formed, fully
     reachable source program, the normalized program the compiler feeds to LCM, optimized with the solved
     seven-ghost bundle, evaluates `e` no more often along its complete run than any safe placement `pl`
     does over the source path.
 
-    Every side condition of `transform_evalCount_le_safe` is discharged; what remains is the run and the
-    competing placement. -/
+    Every side condition of `transform_evalCount_le_safe` about the *analysis* is discharged here —
+    extremality included (`lcmMatSolved_extremal`, `lcmMatSolved_extremalMat`), which is why no `Extremal`
+    appears above. What remains is about the run (`hrun`/`hfin`/`hks`) and the competitor (`pl`/`hcov`),
+    and `pl` is never constructed, so the bound really is against every safe placement. -/
 theorem normalized_evalCount_le_safe {P : Program} (hwf : WellFormed P) (har : AllReachable P)
     {e : Expr} (hnum : isNumbered e = true) (pl : Node → Bool)
     {σ : Store} {c_f : Config} (ks : Nat)
     (hrun : Steps (normalize P) ⟨(normalize P).entry, σ⟩ c_f)
     (hfin : Final (normalize P) c_f)
     (hks : run (normalize P) ⟨(normalize P).entry, σ⟩ ks = (c_f, .next c_f))
-    (hcov : PlCovers (normalize P)
-              (lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf)
-              e pl ⟨(normalize P).entry, σ⟩ ks false) :
-    -- `N` is the program the compiler feeds to LCM; `S` its solved seven-ghost bundle; `T` the optimized
-    -- program. Bound here rather than spelled out, so the statement reads as the inequality it is.
+    (hcov : PlCovers (normalize P) (normSolved hwf har) e pl ⟨(normalize P).entry, σ⟩ ks false) :
     let N := normalize P
-    let S := lcmMatSolved N (normalize_wellNormalized P hwf har).wf
+    let S := normSolved hwf har
     let T := transform N S
     ∃ kt τf,
       run T ⟨blockOff N S N.entry, σ⟩ kt
