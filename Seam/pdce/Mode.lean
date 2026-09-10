@@ -12,6 +12,9 @@ import BaseLanguage.PDCE.FaultPreservation
 | `classic`        | ✅   | **not** preserved | ✅      | every assignment              |
 | `preserveFaults` | ✅   | ✅            | ✅         | all but possibly-faulting ones |
 
+`runPdce_safe_preserves_all` states the `preserveFaults` row as a single theorem: all three outcomes of the
+base language are preserved, halting runs together with their observable store.
+
 Unlike LCM's two modes — which re-aim one field of *one* solved bundle — PDCE's two modes run **two
 analyses**. The reason is structural, and worth stating plainly: LCM's fix only ever *removes* insertions,
 a subset operation, and every `Anticipated`/`Sink` clause is an upper bound, so filtering a ghost preserves
@@ -82,5 +85,20 @@ theorem runPdce_preserves_faulting {P : Program} (wf : WellFormed P)
         ∧ Faulting (runPdce .preserveFaults P wf) df :=
   transform_preserves_faulting (pdceFaultSolved P wf) wf
     (pdceFaultSolved_keep_faultFree P wf) hrun hfault
+
+/-- **The fault-preserving mode preserves every outcome the semantics can produce.** The dual of
+    `LCM.runLcm_safe_preserves_all`: halting with the observable store, faulting, and divergence. The
+    classical mode has the first and third conjuncts but not the second — it can sink a faulting
+    assignment past a branch, or delete it outright when its result is faintly dead. -/
+theorem runPdce_safe_preserves_all {P : Program} (wf : WellFormed P) {σ : Store} :
+    let T := runPdce .preserveFaults P wf
+    (∀ c_f, Steps P ⟨P.entry, σ⟩ c_f → Final P c_f →
+        ∃ d_f, Steps T ⟨T.entry, σ⟩ d_f ∧ Final T d_f ∧ ∀ v ∈ P.obs, d_f.store v = c_f.store v)
+  ∧ (∀ c_f, Steps P ⟨P.entry, σ⟩ c_f → Faulting P c_f →
+        ∃ df, Steps T ⟨T.entry, σ⟩ df ∧ Faulting T df)
+  ∧ (Diverges P ⟨P.entry, σ⟩ → Diverges T ⟨T.entry, σ⟩) :=
+  ⟨fun _ hrun hfin => runPdce_preserves_halt _ wf hrun hfin,
+   fun _ hrun hflt => runPdce_preserves_faulting wf hrun hflt,
+   fun hdiv => runPdce_preserves_diverges _ wf hdiv⟩
 
 end BaseLanguage.Analyses.PDCE

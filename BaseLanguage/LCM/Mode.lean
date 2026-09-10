@@ -19,6 +19,10 @@ in `classic`. A program containing a division still gets the full benefit of LCM
 expressions — there is no whole-program fallback, and no side condition to check, because every insert set
 is gated by `τᵤK = τᵤ ∩ keep` and so is fault-free by construction (`safeInserts_faultFree`).
 
+`runLcm_safe_preserves_all` states the `preserveDivergence` row as a single theorem: the base language has
+exactly three outcomes (halt, fault, diverge), and that mode preserves all three, halting runs together
+with their observable store.
+
 Because `keep` occurs in no validity or extremality clause, `S.withKeep f` is trivially still a valid,
 extremal bundle (`Extremal.withKeep`). That is what lets *one* development, *one* solver and *one* set of
 correctness theorems — all quantified over an arbitrary valid, extremal bundle — cover both modes.
@@ -82,6 +86,20 @@ theorem runLcm_preserves_halt {P : Program} (mode : LcmMode) (S : LcmSpec P)
   rw [transform_entry]
   exact transform_preserves_halt (mode.spec S) (mode.spec_extremal hS) wn hen hobs hrun hfin
 
+/-- **Both modes preserve faults.** `transform_preserves_faulting` holds for any extremal bundle, and the
+    mode's bundle is extremal whatever the filter is aimed at, so the fault diagonal is mode-general in
+    exactly the way the halting theorem is. Together with `runLcm_preserves_halt` and
+    `runLcm_preserves_diverges` this closes the outcome table for `.preserveDivergence`: it preserves
+    halting (with the observables), faulting, and divergence. -/
+theorem runLcm_preserves_faulting {P : Program} (mode : LcmMode) (S : LcmSpec P)
+    (hS : Extremal S) (wn : WellNormalized P) {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
+    {σ : Store} {c_n : Config} (hrun : Steps P ⟨P.entry, σ⟩ c_n) (hflt : Faulting P c_n) :
+    ∃ df, Steps (runLcm mode P S) ⟨(runLcm mode P S).entry, σ⟩ df
+        ∧ Faulting (runLcm mode P S) df := by
+  show ∃ df, Steps (transform P (mode.spec S)) ⟨(transform P (mode.spec S)).entry, σ⟩ df ∧ _
+  rw [transform_entry]
+  exact transform_preserves_faulting (mode.spec S) (mode.spec_extremal hS) wn hen hrun hflt
+
 /-- **The divergence-preserving mode preserves divergence — for every program, with no side condition.**
     Its bundle hoists only `Expr.faultFree` expressions, so `SafeInserts` is immediate
     (`safeInserts_faultFree`) rather than checked, and nothing falls back to the unoptimized program. -/
@@ -109,5 +127,22 @@ theorem runLcm_normalized_preserves_diverges {P : Program}
   obtain ⟨ne, hen⟩ := Normalize.normalize_entry_noop P
   have hwn := Normalize.normalize_wellNormalized P hwf har
   exact runLcm_preserves_diverges S hS hwn hwn.wf hen hdiv
+
+/-- **The divergence-preserving mode preserves every outcome the semantics can produce.** The base
+    language has exactly three (`IR/TAC.lean`: halt, fault, diverge), and `.preserveDivergence` preserves
+    all three — halting with the observable store, faulting, and divergence. The classical mode has the
+    first two conjuncts but not the third (`examples/lcm-divergence/DivergenceGap.lean` is the witness). -/
+theorem runLcm_safe_preserves_all {P : Program} (S : LcmSpec P) (hS : Extremal S)
+    (wn : WellNormalized P) (wf : WellFormed P) {ne : Node} (hen : P.fetch P.entry = some (.noop ne))
+    (hobs : ∀ v ∈ P.obs, varIsOrig v = true) {σ : Store} :
+    let T := runLcm .preserveDivergence P S
+    (∀ c_f, Steps P ⟨P.entry, σ⟩ c_f → Final P c_f →
+        ∃ d_f, Steps T ⟨T.entry, σ⟩ d_f ∧ Final T d_f ∧ ∀ v ∈ P.obs, d_f.store v = c_f.store v)
+  ∧ (∀ c_n, Steps P ⟨P.entry, σ⟩ c_n → Faulting P c_n →
+        ∃ df, Steps T ⟨T.entry, σ⟩ df ∧ Faulting T df)
+  ∧ (Diverges P ⟨P.entry, σ⟩ → Diverges T ⟨T.entry, σ⟩) :=
+  ⟨fun _ hrun hfin => runLcm_preserves_halt _ S hS wn hen hobs hrun hfin,
+   fun _ hrun hflt => runLcm_preserves_faulting _ S hS wn hen hrun hflt,
+   fun hdiv => runLcm_preserves_diverges S hS wn wf hen hdiv⟩
 
 end BaseLanguage.Analyses.LCM
