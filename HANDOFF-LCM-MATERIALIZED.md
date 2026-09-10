@@ -102,7 +102,7 @@ over `Step`, phrased with `insertEdge` / `insertBefore` / `pass`.
 ## 4. The remaining work, in order
 
 ### Step 1 — `ηₘ` into the bundle
-`analyses/lcm/LcmAdapter.lean:21`. Add `ηₘ : Node → Assignments` and
+`analyses/lcm/LcmAdapter.lean:22`. Add `ηₘ : Node → Assignments` and
 `isMat : Materialized P πₐ ηₐ ηₚ τₚ τᵤ ηₘ`. Every `LcmSpec` construction must
 supply them: `Seam/lcm/Adapter.lean` (`lcmSolved`), `Seam/lcmmat/Adapter.lean`,
 `BaseLanguage/LCM/BasicCorrect.lean` (`mkBasic`), and any test fixtures.
