@@ -41,6 +41,18 @@ def normSolvedMat {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
     LCM.LcmSpec (normalize P) :=
   lcmMatSolved (normalize P) (normalize_wellNormalized P hwf har).wf
 
+/-- **The seven-ghost bundle is extremal in the six classical ghosts** — from the solver, via
+    `lcmMatSolved_extremal`. Named for the same reason as its `.demand` counterpart. -/
+theorem normSolvedMat_extremal {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
+    LCM.Extremal (normSolvedMat hwf har) :=
+  lcmMatSolved_extremal (normalize P) (normalize_wellNormalized P hwf har).wf
+
+/-- **…and its seventh ghost is greatest.** Kept apart from `Extremal` because a six-ghost bundle has no
+    `ηₘ` to be greatest in; this is what the gate-completeness discharge needs. -/
+theorem normSolvedMat_extremalMat {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
+    LCM.ExtremalMat (normSolvedMat hwf har) :=
+  lcmMatSolved_extremalMat (normalize P) (normalize_wellNormalized P hwf har).wf
+
 /-- **Computational optimality of LCM on the compiler's own bundle.** For any well-formed, fully
     reachable source program, the normalized program the compiler feeds to LCM, optimized with the solved
     seven-ghost bundle, evaluates `e` no more often along its complete run than any safe placement `pl`
@@ -68,12 +80,14 @@ theorem normalized_evalCount_le_safe_mat {P : Program} (hwf : WellFormed P) (har
   intro N S T
   obtain ⟨ne, hen⟩ := normalize_entry_noop P
   have wn : WellNormalized N := normalize_wellNormalized P hwf har
-  exact transform_evalCount_le_safe S (lcmMatSolved_extremal N wn.wf)
+  exact transform_evalCount_le_safe S (normSolvedMat_extremal hwf har)
     (gateSound_materialized S rfl)
-    (gateComplete_materialized S rfl (lcmMatSolved_extremal N wn.wf)
-      (lcmMatSolved_extremalMat N wn.wf) wn hen)
+    (gateComplete_materialized S rfl (normSolvedMat_extremal hwf har)
+      (normSolvedMat_extremalMat hwf har) wn hen)
     wn hnum rfl pl hrun hfin ks hks hcov
 
+#assert_clean_axioms normSolvedMat_extremal
+#assert_clean_axioms normSolvedMat_extremalMat
 #assert_clean_axioms normalized_evalCount_le_safe_mat
 
 end BaseLanguage.Analyses.LcmMat

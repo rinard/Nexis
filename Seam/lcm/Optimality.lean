@@ -40,6 +40,14 @@ def normSolved {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
     LcmSpec (normalize P) :=
   lcmSolved (normalize P) (normalize_wellNormalized P hwf har).wf
 
+/-- **The default bundle is extremal.** Named, rather than re-derived inline, so "where does extremality
+    come from?" is answerable by a reference: it comes from the solver, via the generated per-ghost
+    `_greatest`/`_least` theorems that `lcmSolved_extremal` assembles. It is a fact about the worklist's
+    output, never a hypothesis the caller supplies. -/
+theorem normSolved_extremal {P : Program} (hwf : WellFormed P) (har : AllReachable P) :
+    Extremal (normSolved hwf har) :=
+  lcmSolved_extremal (normalize P) (normalize_wellNormalized P hwf har).wf
+
 /-- **Computational optimality of LCM on the compiler's default bundle.** For any well-formed, fully
     reachable source program, the normalized program the compiler feeds to LCM, optimized with the solved
     six-ghost bundle under the classical demand gate, evaluates `e` no more often along its complete run
@@ -67,11 +75,12 @@ theorem normalized_evalCount_le_safe {P : Program} (hwf : WellFormed P) (har : A
   intro N S T
   obtain ⟨ne, hen⟩ := normalize_entry_noop P
   have wn : WellNormalized N := normalize_wellNormalized P hwf har
-  exact transform_evalCount_le_safe S (lcmSolved_extremal N wn.wf)
-    (gateSound_demand S rfl (lcmSolved_extremal N wn.wf) wn hen)
+  exact transform_evalCount_le_safe S (normSolved_extremal hwf har)
+    (gateSound_demand S rfl (normSolved_extremal hwf har) wn hen)
     (gateComplete_demand S rfl)
     wn hnum rfl pl hrun hfin ks hks hcov
 
+#assert_clean_axioms normSolved_extremal
 #assert_clean_axioms normalized_evalCount_le_safe
 
 end BaseLanguage.Analyses.LCM
