@@ -60,6 +60,11 @@ theorem normalize_wellNormalized (P : Program)
       allReach := prependEntry_allReach hwfD harD
       entryUnused := prependEntry_entryUnused _ }
 
+/-- **`normalize` preserves the observable set.** Each of its three sub-passes does, structurally, so
+    this is `rfl` — but stating it lets a caller rewrite instead of unfolding `normalize` at a large
+    concrete argument, which is the difference between a cheap step and an expensive one. -/
+@[simp] theorem normalize_obs (P : Program) : (normalize P).obs = P.obs := rfl
+
 /-- The per-pass fresh-temp supply for the normalized program satisfies `FreshForN`. -/
 theorem normalize_freshForN (P : Program) : FreshForN (normalize P) (freshN (normalize P)) :=
   freshN_freshForN (normalize P)

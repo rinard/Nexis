@@ -146,7 +146,6 @@ theorem exitBlock_faultOr {P : Program} (S : LcmSpec P) {i : Node} (hi : i < P.s
     (blockOff P S i + (insertBefore P S i).toList.length + 1) τ
     Assignments.nodup_toList hdist hfetch hfresh
 
-set_option maxHeartbeats 400000 in
 /-- **`match_step_ifz_fault` — `match_step_fault`'s `ifz` case.** Either the entry chain or the taken edge chain faults (→ target
     `Faulting`), or the branch completes cleanly (`match_step_ifz` + `Cov_step_edge`). The edge chain is run
     fault-aware via `steps_exitSeg_fault`; a clean edge run contradicts the fault witness `hX`. -/

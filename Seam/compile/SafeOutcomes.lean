@@ -72,16 +72,36 @@ theorem safeP₀_wn (s : Stmt) : WellNormalized (safeP₀ s) :=
 
 theorem safeP₀_wf (s : Stmt) : WellFormed (safeP₀ s) := (safeP₀_wn s).wf
 
-/-- Every stage preserves the observable set, so `lower`'s observables are the ones LCM sees. -/
+theorem safeP₀_obs (s : Stmt) : (safeP₀ s).obs = (safePi s).obs := normalize_obs (safePi s)
+
+/-! ### Observables, stage by stage
+
+Every pass preserves `obs`, and each of the equations below holds by `rfl`. Proving them *here* — as
+standalone lemmas, where the program argument is a variable — rather than letting the elaborator
+rediscover the defeq inside the correctness proofs is what keeps those proofs cheap: at the point of use
+the argument is the whole pipeline term, and unfolding it repeatedly costs more than the rest of the
+proof put together. -/
+
+theorem safePn_obs (s : Stmt) : (safePn s).obs = (lower s).obs := by
+  show (normalize (Peephole.peephole (lower s))).obs = _
+  rw [normalize_obs, Peephole.peephole_obs]
+
 theorem safePi_obs (s : Stmt) : (safePi s).obs = (lower s).obs := by
   show (Pass.iterateOpt optProvider (safePn s).size (safePn s) (wn_preOpt s).wf).obs = _
-  rw [Pass.iterateOpt_obs]
-  rfl
+  rw [Pass.iterateOpt_obs, safePn_obs]
+
+theorem lower_obsOrig (s : Stmt) : ∀ v ∈ (lower s).obs, varIsOrig v = true := by
+  intro v hv; obtain ⟨n, rfl⟩ := lower_obs_orig s v hv; rfl
+
+theorem peephole_obsOrig (s : Stmt) :
+    ∀ v ∈ (Peephole.peephole (lower s)).obs, varIsOrig v = true := by
+  intro v hv; rw [Peephole.peephole_obs] at hv; exact lower_obsOrig s v hv
 
 theorem safePi_obsOrig (s : Stmt) : ∀ v ∈ (safePi s).obs, varIsOrig v = true := by
-  intro v hv
-  rw [safePi_obs] at hv
-  obtain ⟨n, rfl⟩ := lower_obs_orig s v hv; rfl
+  intro v hv; rw [safePi_obs] at hv; exact lower_obsOrig s v hv
+
+theorem safeP₀_obsOrig (s : Stmt) : ∀ v ∈ (safeP₀ s).obs, varIsOrig v = true := by
+  intro v hv; rw [safeP₀_obs] at hv; exact safePi_obsOrig s v hv
 
 /-- The LCM bundle the safe pipeline hands to the transform: the chosen analysis, the chosen replace
     gate, and the hoisting filter aimed at `Expr.faultFree` (which is what `--lcm=safe` *is*). -/
@@ -100,10 +120,12 @@ theorem safeLcmOut_wf (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.LCM.GateMo
 
 theorem safeLcmOut_entry (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.LCM.GateMode) (s : Stmt) :
     (safeLcmOut a g s).entry
-      = Analyses.LCM.blockOff (safeP₀ s) (safeSlcm a g s) (safeP₀ s).entry := rfl
+      = Analyses.LCM.blockOff (safeP₀ s) (safeSlcm a g s) (safeP₀ s).entry :=
+  Analyses.LCM.transform_entry (safeSlcm a g s)
 
 theorem safeLcmOut_obs (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.LCM.GateMode) (s : Stmt) :
-    (safeLcmOut a g s).obs = (safePi s).obs := rfl
+    (safeLcmOut a g s).obs = (safeP₀ s).obs :=
+  Analyses.LCM.transform_obs (safeSlcm a g s)
 
 /-- The IR the compiler emits under `--lcm=safe --pdce=safe`.
 
@@ -119,16 +141,16 @@ theorem mainOptSafe_wf (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.LCM.GateM
     WellFormed (mainOptSafe a g s) :=
   Analyses.PDCE.runPdce_wellFormed .preserveFaults _ (safeLcmOut_wf a g s)
 
+theorem mainOptSafe_obs (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.LCM.GateMode) (s : Stmt) :
+    (mainOptSafe a g s).obs = (safeLcmOut a g s).obs :=
+  Analyses.PDCE.transform_obs _
+
 /-! ## The three outcomes
 
 Each is the corresponding chain of behaviour lemmas, one per pass. The LCM link is the only one that
 takes a hypothesis beyond well-formedness, and `hg` is it. -/
 
-set_option maxHeartbeats 800000 in
-/-- **Trichotomy ①/③ — halting.** With the observable store, as `main_compile_correct` gives.
-
-    (The observable-agreement chain threads eight stages, each phrased over its own program's `obs`;
-    the defeq between them is cheap individually but adds up, hence the raised budget.) -/
+/-- **Trichotomy ①/③ — halting.** With the observable store, as `main_compile_correct` gives. -/
 theorem safepipe_preserves_halt (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.LCM.GateMode)
     (s : Stmt) (fuel : Nat) (σ' : Store) (hnt : Stmt.noTmp s)
     (h : Ast.evalS fuel s Store.init = .ok σ')
@@ -138,21 +160,21 @@ theorem safepipe_preserves_halt (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.
           ∧ ∀ v ∈ (lower s).obs,
               sf.mem (TacToAsm.slot (TacToAsm.collectVars Pc) v) = TacToAsm.encode (σ' v) := by
   intro Pc
-  have hobs0 : ∀ v ∈ (lower s).obs, varIsOrig v = true := by
-    intro v hv; obtain ⟨n, rfl⟩ := lower_obs_orig s v hv; rfl
+  have hobs0 := lower_obsOrig s
   have hobsPi := safePi_obsOrig s
   obtain ⟨cf0, hs0, hfin0, hframe0⟩ := lower_correct s fuel σ' hnt h
   obtain ⟨cfpe, hspe, hfinpe, hope⟩ := Peephole.peephole_preserves_halt hs0 hfin0
   obtain ⟨cf1, hs1, hfin1, ho1⟩ :=
     normalize_preserves_halt (Peephole.peephole_wellFormed (lower s) (lower_wellFormed s))
-      hobs0 hspe hfinpe
+      (peephole_obsOrig s) hspe hfinpe
   obtain ⟨cfOpt, hsOpt, hfinOpt, hoOpt⟩ :=
     Pass.iterateOpt_preserves_halt optProvider (safePn s).size (safePn s) (wn_preOpt s).wf hs1 hfin1
   obtain ⟨cf2, hs2, hfin2, ho2⟩ :=
     normalize_preserves_halt (safePi_wf s) hobsPi hsOpt hfinOpt
   -- ⑤ LCM, hoisting only fault-free expressions
   obtain ⟨cf3, hs3, hfin3, ho3⟩ :=
-    Analyses.LCM.transform_preserves_halt (safeSlcm a g s) hg (safeP₀_wn s) hobsPi hs2 hfin2
+    Analyses.LCM.transform_preserves_halt (safeSlcm a g s) hg (safeP₀_wn s) (safeP₀_obsOrig s)
+      hs2 hfin2
   have hs3' : Steps (safeLcmOut a g s) ⟨(safeLcmOut a g s).entry, Store.init⟩ cf3 := by
     rw [safeLcmOut_entry]; exact hs3
   have hfin3' : Final (safeLcmOut a g s) cf3 := hfin3
@@ -165,14 +187,16 @@ theorem safepipe_preserves_halt (a : Analyses.LcmMat.LcmAnalysis) (g : Analyses.
     Pass.Cleanup.cleanup_preserves_halt (mainOptSafe_wf a g s) hs4' hfin4'
   obtain ⟨f, sf, hrun, hmem⟩ := TacToAsm.codegen_simulates hs5 hfin5
   refine ⟨f, sf, hrun, fun v hv => ?_⟩
-  -- the observable set is the same at every stage; name the membership at each stage's type so the
-  -- defeq is checked once, in a small context
+  -- the observable set is the same at every stage; each step is a *rewrite* by a proved equation, not a
+  -- defeq check against the pipeline term
+  have hvPe : v ∈ (Peephole.peephole (lower s)).obs := by rw [Peephole.peephole_obs]; exact hv
+  have hvPn : v ∈ (safePn s).obs := by rw [safePn_obs]; exact hv
   have hvPi : v ∈ (safePi s).obs := by rw [safePi_obs]; exact hv
-  have hvP₀ : v ∈ (safeP₀ s).obs := hvPi
-  have hvL : v ∈ (safeLcmOut a g s).obs := hvPi
-  have hvM : v ∈ (mainOptSafe a g s).obs := hvPi
+  have hvP₀ : v ∈ (safeP₀ s).obs := by rw [safeP₀_obs]; exact hvPi
+  have hvL : v ∈ (safeLcmOut a g s).obs := by rw [safeLcmOut_obs]; exact hvP₀
+  have hvM : v ∈ (mainOptSafe a g s).obs := by rw [mainOptSafe_obs]; exact hvL
   have hchain : cf5.store v = σ' v := by
-    rw [ho5 v hvM, ho4 v hvL, ho3 v hvP₀, ho2 v hvPi, hoOpt v hv, ho1 v hv, hope v hv,
+    rw [ho5 v hvM, ho4 v hvL, ho3 v hvP₀, ho2 v hvPi, hoOpt v hvPn, ho1 v hvPe, hope v hv,
       hframe0 v (lower_obs_orig s v hv)]
   exact (hmem v).trans (congrArg TacToAsm.encode hchain)
 

@@ -215,6 +215,23 @@ Lean settles this: `transform_preserves_halt_mat` typechecks with no `Extremal` 
   depends on both discharges — which is why the two specific theorems are proved *directly* from
   `pipeline_to_asm` rather than routed through it.
 
+## 6a. Elaboration cost: name the `obs` bridges
+
+The pipeline theorems thread eight stages, each phrased over its own program's `obs`. Passing a
+membership or an `obs` hypothesis from one stage to the next *by defeq* makes the elaborator unfold the
+whole pipeline term at every use, and that dominated everything else: `safepipe_preserves_halt` needed
+~300 000 heartbeats and the file took 15 s.
+
+The fix is to state each bridge as a lemma where the program argument is a **variable** — `normalize_obs`
+(new, in `Normalize/Normalize.lean`), `Peephole.peephole_obs`, `Pass.iterateOpt_obs`,
+`LCM.transform_obs`, `PDCE.transform_obs` — and to give every stage a correctly-typed `obs` hypothesis
+(`safeP₀_obsOrig`, `hvPn`, `hvPe`, …) so each step is a *rewrite by a proved equation* rather than a
+defeq check. Cost after: **under 800 heartbeats**, file build 1 s.
+
+That also retired the one pre-existing `set_option maxHeartbeats` in the repo
+(`Correctness/FaultPreservation.lean`), whose need the `replace_covered` simplification had already
+removed. There are now **no heartbeat overrides anywhere in the tree**.
+
 ## 7. Facts worth not rediscovering
 
 - **`matPlace` at `τᵤK` is `insertEdge ∪ (insertBefore ∩ pass)` by `rfl`.** `edgeGen`/`nodeGen`
@@ -233,6 +250,8 @@ Lean settles this: `transform_preserves_halt_mat` typechecks with no `Extremal` 
 - **`mkBasic` widens `τᵤ` to `allExprs`, and `ηₘ` rides along unchanged.** `matPlace` is monotone
   in `τᵤ` (both generators intersect with it) and the clause is an upper bound, so a wider `τᵤ`
   only grows the right-hand side. `mkBasic` also preserves `gate`.
+- **Cross-stage `obs` defeq is the expensive thing** in any pipeline proof — see §6a. If a new
+  end-to-end theorem is slow, look there first, not at the simulation lemmas.
 - **`examples/scale/*.src` hang the CLI**, on the pre-change binary too. They are exercised by
   `lake test`, not by `prophecyc` directly; do not read that as a regression.
 - **Clause language ⊊ term language**, **ghost references are backward-only**, and **confluence is
