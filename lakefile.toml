@@ -59,7 +59,7 @@ name = "gengen-check"
 root = "CheckMain"
 srcDir = "test"
 
-# A spiky stress corpus (`stress/*.gsl`, 34 specs): bizarre / compound / deeply-nested / deliberately-malformed
+# A spiky stress corpus (`stress/*.gsl`, 37 specs): bizarre / compound / deeply-nested / deliberately-malformed
 # specs that push the parser, lower, and quadrant selector to their edges. A regression GATE — each spec has
 # an expected lowers/rejects outcome and the exe exits nonzero on any deviation. See GenGeneralStress.lean.
 [[lean_exe]]

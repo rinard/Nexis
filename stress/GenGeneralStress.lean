@@ -89,7 +89,14 @@ def corpus : List (String × Outcome) :=
     ("32-FwdGuardClamp",   .rejects),                         -- forward guard + unguarded clamp ⇒ still rejected
     ("33-FwdMustFloor",    .lowers "FwdMustFloor·fwdMust"),   -- fwd·must + lone floor   ⇒ resFMC (ceiling = universe)
     ("34-FwdMayCeil",      .lowers "FwdMayCeil·fwdMay"),     -- fwd·may  + lone ceiling ⇒ resFmC (floor = ∅)
-    ("35-BareFamily",      .parseFail) ]                     -- domain with no `[Elem]` ⇒ located error, not silent
+    ("35-BareFamily",      .parseFail),                      -- domain with no `[Elem]` ⇒ located error, not silent
+
+    -- A const (non-ghost) family in a transfer is a `.src` leaf: it reads the CURRENT node. Applying one
+    -- to `n'` / `n n'` cannot be honoured (only a parameterised *placement* `f(…)(n')` carries a `readAt`),
+    -- so it must be a LOCATED ERROR rather than a silent read-at-`n` — a misparse that would emit the
+    -- `gen(n)` analysis under a spec that says `gen(n')`.
+    ("36-SuccConst",       .rejects),                        -- `gen(n')` in the canonical diamond
+    ("37-EdgeConst",       .rejects) ]                       -- `gen(n,n')` on the general structural path
 
 def runStress : IO UInt32 := do
   IO.println "== gengen-stress: the spiky stress corpus (regression gate) =="

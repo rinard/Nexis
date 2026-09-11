@@ -1,0 +1,17 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 36-SuccConst.gsl — a const (non-ghost) family applied to the SUCCESSOR, `genDefs(n')`, inside the
+-- canonical diamond `gen ∪ (self ∩ transp)`.
+-- A transfer's const leaf is read at the CURRENT node (`.src`); only a parameterised *placement*
+-- (`f(…)(n')`) carries a `readAt`. Lowering the leaf while dropping its `n'` would emit the `genDefs(n)`
+-- analysis under a spec that says `genDefs(n')` — a SILENT misparse, which the totality contract forbids.
+-- EXPECTED: rejects (a located error at LOWER, naming the family).
+
+include Tac.Locals
+
+analysis SuccConst {
+  history SuccConst h : Defs[Node] {
+    update : ∀ n→n'. h(n') ⊆ genDefs(n') ∪ (h(n) ∩ transpDefs(n))
+    seed   : h(entry) ⊆ ∅
+    within : ∀ n. h(n) ⊆ allDefs
+  }
+}

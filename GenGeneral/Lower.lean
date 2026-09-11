@@ -55,6 +55,18 @@ def readAtOf (pos : Pos) (nodes : List String) : Res ReadAt :=
   | []          => .ok .whole
   | _           => err pos s!"unrecognized node arguments {nodes} (expected `n`, `n'`, `n n'`, or none)"
 
+/-- The `Leaf` for a **const** (non-ghost) family inside a transfer term. A const leaf is read at the
+    **current** node (`.src`), so a successor (`n'`) or edge (`n n'`) read cannot be represented here —
+    a **located error**, never a silent read-at-`n` (the totality contract; the same discipline
+    `setExprToLeaf` enforces for clamp/gather/gate leaves). Bare, `n`, and an element arg (`needs(z)`)
+    all denote the current node. A read at the successor or the edge is available only as a *placement*
+    (a parameterised application `f(…)(n')` / `f(…)(n,n')`), which routes through `readAtOf` instead. -/
+def constLeafOf (pos : Pos) (r : FamilyRef) : Res Leaf :=
+  match r.nodes with
+  | ["n'"]      => err pos s!"`{r.name}(n')`: a transfer's const leaf reads the current node `n`, not the successor `n'` (only a parameterised placement `f(…)(n')` can read at the successor)"
+  | ["n", "n'"] => err pos s!"`{r.name}(n,n')`: a transfer's const leaf reads the current node `n`, not the edge (only a parameterised placement `f(…)(n,n')` can read at the edge)"
+  | _           => .ok (Leaf.node r.name)
+
 /-- Lower a set-expression to a `Leaf` (used for a clamp ceiling/floor, and for a gather `sub(z)` / gate
     singleton). A `Leaf` reads the **current** node `n` (`.src`) — bare (`primes`), explicit `n`, or an
     element arg (`needs(z)`, whose element the printer re-applies). A `∪`/`∖` composes leaves. **Located
@@ -117,7 +129,7 @@ def atomsOf (pos : Pos) (univName : String) (ccs : List Clause) : Res Transfer :
     would negate it) — a located error, so the precondition is checked, not assumed. Also a **located
     error** on `∅` or a non-family `∖` right (not representable as a single MTC term). -/
 partial def lowerSetExpr (pos : Pos) (self : String) : SetExpr → Res Transfer
-  | .ref r     => if r.name == self then .ok .var else .ok (.const (Leaf.node r.name))
+  | .ref r     => if r.name == self then .ok .var else return .const (← constLeafOf pos r)
   | .union a b => return .union (← lowerSetExpr pos self a) (← lowerSetExpr pos self b)
   | .inter a b => return .inter (← lowerSetExpr pos self a) (← lowerSetExpr pos self b)
   | .diff a b  =>
@@ -125,7 +137,7 @@ partial def lowerSetExpr (pos : Pos) (self : String) : SetExpr → Res Transfer
     | .ref rb =>
       if rb.name == self then
         err pos s!"the ghost '{self}' may not appear on the right of a difference (`… ∖ {self}`) — the monotonicity condition requires it occur only positively (under `∪`/`∩`, or as the LEFT of `∖`)"
-      else return .diffc (← lowerSetExpr pos self a) (Leaf.node rb.name)
+      else return .diffc (← lowerSetExpr pos self a) (← constLeafOf pos rb)
     | _       => err pos "a `∖` (diffc) subtrahend must be a single family, not a compound"
   | .empty     => err pos "`∅` is not representable as a standalone MTC term (use it only in a seed/boundary)"
 
@@ -281,12 +293,14 @@ def lowerGhost (_ghosts : List String) (g : GhostBlock) : Res AnalysisIR := do
       | some aref =>
         if !aref.params.isEmpty then
           -- fwdEdge: `self' ⊆ earliest(foreigns)(n,n') ∪ (self ∖ gres)`
-          let gres ← match b with
-            | .diff _ x => seName prop.pos "as the fwdEdge `gres`" x
+          let gresLeaf ← match b with
+            | .diff _ x => match seRefOf x with
+              | some r => constLeafOf prop.pos r
+              | none   => err prop.pos "expected a single family as the fwdEdge `gres`, found a compound set-expression"
             | _         => err prop.pos s!"ghost '{g.name}': fwdEdge `update` RHS must be `place ∪ (self ∖ gres)`"
           let readAt ← readAtOf prop.pos aref.nodes
           let placeLeaf : Leaf := .fam aref.name aref.params readAt
-          let t : Transfer := .union (.const placeLeaf) (.diffc .var (Leaf.node gres))
+          let t : Transfer := .union (.const placeLeaf) (.diffc .var gresLeaf)
           return { base with direction := dir, extremal := ex, transfer := t, foreigns := aref.params }
         else
           -- diamond `gen ∪ (self ∩ transp)` (transp a single family); ANY other monotone RHS falls to the
@@ -296,7 +310,7 @@ def lowerGhost (_ghosts : List String) (g : GhostBlock) : Res AnalysisIR := do
             | _          => none
           match transpRef with
           | some tr =>
-            let t : Transfer := .union (.const (Leaf.node aref.name)) (.inter .var (.const (Leaf.node tr.name)))
+            let t : Transfer := .union (.const (← constLeafOf prop.pos aref)) (.inter .var (.const (← constLeafOf prop.pos tr)))
             return { base with direction := dir, extremal := ex, transfer := t }
           | none =>
             let t ← lowerSetExpr prop.pos c nonSelf
@@ -304,13 +318,15 @@ def lowerGhost (_ghosts : List String) (g : GhostBlock) : Res AnalysisIR := do
       | none =>
         -- FLIPPED diamond `(self ∩ transp) ∪ gen` (the gen is the SECOND operand) — same term as the
         -- canonical `gen ∪ (self ∩ transp)`, so operand order can't silently change the emitted predicate.
-        let flipped : Option (String × SetExpr) := match seRefOf b with
-          | some br => if br.params.isEmpty then some (br.name, a) else none
+        let flipped : Option (FamilyRef × SetExpr) := match seRefOf b with
+          | some br => if br.params.isEmpty then some (br, a) else none
           | none    => none
         match flipped with
-        | some (genName, .inter x y) =>
-          let transp ← seName prop.pos "as the diamond `transp`" (if isSelf x then y else x)
-          let t : Transfer := .union (.const (Leaf.node genName)) (.inter .var (.const (Leaf.node transp)))
+        | some (genRef, .inter x y) =>
+          let transpRef ← match seRefOf (if isSelf x then y else x) with
+            | some r => pure r
+            | none   => err prop.pos "expected a single family as the diamond `transp`, found a compound set-expression"
+          let t : Transfer := .union (.const (← constLeafOf prop.pos genRef)) (.inter .var (.const (← constLeafOf prop.pos transpRef)))
           return { base with direction := dir, extremal := ex, transfer := t }
         | _ =>
           let t ← lowerSetExpr prop.pos c nonSelf

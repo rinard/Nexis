@@ -14,10 +14,11 @@ deliberately when a generalization changes what a spec does.
 ## Outcomes
 
 - **`lowers`** — lex+parses the frozen grammar, lowers to an `AnalysisIR`, and selects a consistent
-  quadrant. **27 of 34.**
+  quadrant. **27 of 37.**
 - **`rejects`** — the totality contract produces a **located error**, at lowering (`∩` in a gather-sub /
   gate singleton, a standalone `∅`, a missing `within`, an unguarded clamp under a forward guard) or
-  selection (a cyclic or self-referential confluence). **7 of 34** (11, 16, 21–24, 32).
+  selection (a cyclic or self-referential confluence). **9 of 37** (11, 16, 21–24, 32, 36, 37).
+- **`parseFail`** — refused earlier still, in the lexer/parser, before any IR exists. **1 of 37** (35).
 
 ## The specs
 
@@ -57,11 +58,18 @@ deliberately when a generalization changes what a spec does.
 | 32 | `FwdGuardClamp` | forward **guard + unguarded clamp** — still a located error | **rejects** |
 | 33 | `FwdMustFloor` | fwd·must + lone floor ⇒ `resFMC` (ceiling = universe) | lowers |
 | 34 | `FwdMayCeil` | fwd·may + lone ceiling ⇒ `resFmC` (floor = `∅`) | lowers |
+| 35 | `BareFamily` | a domain with no `[Elem]` annotation | **parseFail** |
+| 36 | `SuccConst` | a const family at the successor, `gen(n')`, in the diamond | **rejects** |
+| 37 | `EdgeConst` | a const family at the edge, `gen(n,n')`, on the general path | **rejects** |
 
 Specs 01–20 are the original edge-probing set (every quadrant, atom, compound, confluence chain, edge
 placement, deep/wide nesting, cyclic/self-referential rejection). Specs 21–24 pin the totality contract's
 **located-error** paths; 25–28 pin the generalized combinators (compound gather-sub / gate singleton,
 compound guarded-base, forward set-level gate); 29–34 pin the doubly-clamped floor/ceiling family
 (floor + ceiling, lone forward floor/ceiling across must/may, and the still-rejected guarded-clamp
-combination). Every construct these probe either lowers or is a deliberate located error — there are no
+combination). 35 pins the ghost header (a domain with no element type is refused in the parser, not
+lowered into unusable Lean); 36–37 pin the const-leaf read site — a non-ghost family inside a transfer is
+read at the *current* node, so applying one to `n'` or to the edge cannot be honoured (only a parameterised
+placement `f(…)(n')` carries a `readAt`) and must be a located error rather than a silent read-at-`n`.
+Every construct these probe either lowers or is a deliberate located error — there are no
 silent drops or undetected inconsistencies.

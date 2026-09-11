@@ -1,0 +1,16 @@
+-- Copyright (c) 2026 Martin Rinard
+-- 37-EdgeConst.gsl — a const (non-ghost) family applied to the EDGE, `genNode(n,n')`, on the general
+-- structural path (a plain `∪` carry, past the diamond).
+-- Same contract as 36: an edge read is expressible only as a parameterised placement `f(…)(n,n')`;
+-- a bare family is a `.src` leaf, so the edge args cannot be honoured and must not be dropped.
+-- EXPECTED: rejects (a located error at LOWER, naming the family).
+
+include Tac.Locals
+
+analysis EdgeConst {
+  history EdgeConst h : Defs[Node] {
+    update : ∀ n→n'. h(n') ⊆ genNode(n,n') ∪ h(n)
+    seed   : h(entry) ⊆ ∅
+    within : ∀ n. h(n) ⊆ allNodes
+  }
+}
