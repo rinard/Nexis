@@ -1,0 +1,23 @@
+-- Copyright (c) 2026 Martin Rinard
+-- Dom.gsl — STRICT DOMINATORS, the textbook forward-must bitvector analysis, as a single ghost.
+--
+--     sdom(n) = ⋂ { {p} ∪ sdom(p) | p a predecessor of n },   sdom(entry) = ∅
+--
+-- and the ordinary dominators are `dom(n) = sdom(n) ∪ {n}` — a definition, not a fixpoint.
+--
+-- The meet over predecessors is not written anywhere: a `∀ n→n'` clause with the ghost on the ⊆-left
+-- holds for *every* incoming edge, which IS the meet. `genNode(n)` is the singleton `{n}` and `allNodes`
+-- the universe, both shared base node-locals — so this analysis introduces no definitions of its own.
+--
+-- history ⇒ forward; the must quadrant is inferred from the ghost's position on the ⊆-left.
+
+include Tac.Locals
+
+analysis Dom {
+
+  history Dom sdom : Defs[Node] {                -- history · must  ⇒  fwd·must
+    update : ∀ n→n'. sdom(n') ⊆ genNode(n) ∪ sdom(n)
+    seed   : sdom(entry) ⊆ ∅
+    within : ∀ n. sdom(n) ⊆ allNodes
+  }
+}

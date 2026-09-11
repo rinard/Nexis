@@ -59,6 +59,7 @@ def manifest : List String :=
   , "analyses/maybeassign/MaybeAssign.gsl"
   , "analyses/verybusy/VeryBusy.gsl"
   , "analyses/anticdefs/AnticDefs.gsl"
+  , "analyses/dom/Dom.gsl"                -- dominators: the textbook fwd-must bitvector analysis
   , "analyses/reachable/Reachable.gsl"
   , "analyses/constprop/ConstProp.gsl"   -- fwd·must over ⟨var,const⟩ (`ConstPairs[CPair]`)
   , "analyses/lcm/Lcm.gsl"               -- 7 ghosts, every quadrant + both confluence ops; compiler-facing
